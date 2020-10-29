@@ -1,4 +1,4 @@
-# PyHART Rev3.3
+# PyHART
 PyHART is a set of Python modules that allow you to communicate through the HART protocol.
 
 The strength of PyHART is that all the code is written in python.
