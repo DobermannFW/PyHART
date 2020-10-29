@@ -81,13 +81,6 @@ FLOAT
 def BytearrayToFloat(floatArray):
     return (struct.unpack(">f", floatArray))[0]
 
-#
-# This is useful for ABB 266 Pressure/2WCTW based devices when you want 
-# to write/read from/to the Front End borad.
-# The same should be done for the others data types but I never had the need.
-#
-def BytearrayToFloatInverse(floatArray):
-    return (struct.unpack("<f", floatArray))[0]
 
 #
 # float to array
@@ -95,13 +88,6 @@ def BytearrayToFloatInverse(floatArray):
 def FloatToBytearray(floatNum):
     return bytearray(struct.pack(">f", floatNum))
 
-#
-# This is useful for ABB 266 Pressure/2WCTW based devices when you want 
-# to write/read from/to the Front End borad.
-# The same should be done for the others data types but I never had the need.
-#
-def FloatToBytearrayInverse(floatNum):
-    return bytearray(struct.pack("<f", floatNum))
 
 """
 -------------------------------------------------------------------------------
