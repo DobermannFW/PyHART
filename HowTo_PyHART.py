@@ -91,7 +91,9 @@ if (selection == (count + 1)):
             For example i tested PyHART on a Raspberry Pi3 with an OS with recompiled real-time kernel. 
             This parameter works combined with the next parameter.
             It is used to close RTS signal as soon as last byte is transmitted.
-   - manageRtsCts: (True o False) indicates if PyHART has to manage RTS/CTS signals. It is useless with a modem that manages RTS by himself. (Omitted == False)
+            In the future it could be useful if PyHART will be able to manage the HART master state machine as defined by the protocol specifications.
+   - manageRtsCts: (True o False) indicates if PyHART has to manage RTS/CTS signals. It is useless with a modem that manages RTS by himself.
+                   An RS232 modem, for sure requires that PyHART move RTS by himself, some USB modems provide to move RTS.   (Omitted == False)
 """
 hart = Comm.HartMaster(comport, CommCore.MASTER_TYPE.PRIMARY, num_retry = 0, retriesOnPolling = False, autoPrintTransactions = True, whereToPrint = Comm.WhereToPrint.BOTH, logFile = "terminalLog.log", rt_os = None, manageRtsCts = None)
 
