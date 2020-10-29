@@ -72,12 +72,6 @@ class HartPacket():
         for idx in range(expBytesCnt):
             checksum ^= self.expansionBytes[idx];
         
-        """
-        if ((self.command <= 255) and (self.command != LONG_COMMAND_INDICATOR)):
-            checksum ^= self.command
-        else:
-            checksum ^= LONG_COMMAND_INDICATOR
-        """
         checksum ^= self.command
             
         checksum ^= self.dataLen
