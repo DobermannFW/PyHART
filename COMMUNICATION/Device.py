@@ -192,22 +192,3 @@ class HartDevice():
             print("               Profile: " + self.ProfileStr())
             print("ExtendedFieldDevStatus: " + self.ExtendedFieldDevStatusStr())
         
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
