@@ -11,6 +11,8 @@ PyHART simulates a HART master without to manage the timing of a real master sta
 To better understand how PyHART works and how to use PyHART read the documentation
 and take a look at the file HowTo_PyHART.py
 
+PyHART uses pySerial (https://pyserial.readthedocs.io/en/latest/index.html) to communicate via serial port.
+
 # Future Improvements
 1) Implementation of a datalink layer according with HART state machine for real-time systems.
    I tried to re-compile Kernel linux on Raspberry Pi board in real-time, I tried also low-latency Kernels.
