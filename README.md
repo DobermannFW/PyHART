@@ -16,4 +16,4 @@ PyHART uses pySerial (https://pyserial.readthedocs.io/en/latest/index.html) to c
 # Future Improvements
 1) Implementation of a datalink layer according with HART state machine for real-time systems.
    I tried to re-compile Kernel linux on Raspberry Pi board in real-time, I tried also low-latency Kernels.
-   They works. Now I have to add the HART state machine to PyHART.
+   Now I have to add the HART state machine to PyHART.
