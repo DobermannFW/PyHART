@@ -16,8 +16,11 @@ import CommCore
 GET PY_HART REVISION
 -------------------------------------------------------------------------------
 """
+# MAJOR HART PROTOCOL REVISION
+# PyHART MAJOR REVISION (eg. add master state machine)
+# PyHART MINOR REVISION (usually handles back compatibility)
 def PyHART_Revision():
-    return "3.3"
+    return "7.1.3"
 
 
 """
