@@ -193,52 +193,43 @@ def UnpackAscii(packedString):
     packedLen = len(packedString)
     unpackedLen = int((8 * packedLen) / 6)
     unpackedArray = bytearray(unpackedLen)
-    
-    end = False
-    z = 0
-    j = 0 
-    bit = 0
-    currByte = packedString[j]
-    while (z < unpackedLen) and (end == False):
-        i = 0            
-        unpackedArray[z] = 0x00
-        
-        while (i < 6) and (end == False):
-            val = 0
-            if (currByte & 0x80):
-                val = 1
-            currByte <<= 1
+
+    packed_idx = 0
+    bit_counter = 8
+    curr_byte = 0
+
+    for i in range(unpackedLen):
+
+        for j in range(6):
+
+            if bit_counter == 8:
+                curr_byte = packedString[packed_idx]
+                packed_idx += 1
+                bit_counter = 0
+
+            bit_counter += 1
+
+            bit_val = 0
+            if (curr_byte & 0x80):
+                bit_val = 1
+            curr_byte <<= 1
             
-            if (i == 0):
-                unpackedArray[z] |= ((val << 5) & 0x20)
+            if (j == 0):
+                unpackedArray[i] |= ((bit_val << 5) & 0x20)
                 v = 0
-                if (val == 0):
+                if (bit_val == 0):
                     v = 1
-                unpackedArray[z] |= ((v << 6) & 0x40)
-            elif (i == 1):
-                unpackedArray[z] |= ((val << 4) & 0x10)
-            elif (i == 2):
-                unpackedArray[z] |= ((val << 3) & 0x08)
-            elif (i == 3):
-                unpackedArray[z] |= ((val << 2) & 0x04)
-            elif (i == 4):
-                unpackedArray[z] |= ((val << 1) & 0x02)
-            elif (i == 5):
-                unpackedArray[z] |= (val & 0x01)
-                
-            i += 1
-            if (i == 6) and (j == packedLen - 1):
-                end = True
-            else:
-                bit += 1
-                if (bit == 8):
-                    bit = 0
-                    j += 1
-                    if (j < packedLen):
-                        currByte = packedString[j]
-                        
-        if (end == False):            
-            z += 1
+                unpackedArray[i] |= ((v << 6) & 0x40)
+            elif (j == 1):
+                unpackedArray[i] |= ((bit_val << 4) & 0x10)
+            elif (j == 2):
+                unpackedArray[i] |= ((bit_val << 3) & 0x08)
+            elif (j == 3):
+                unpackedArray[i] |= ((bit_val << 2) & 0x04)
+            elif (j == 4):
+                unpackedArray[i] |= ((bit_val << 1) & 0x02)
+            elif (j == 5):
+                unpackedArray[i] |= (bit_val & 0x01)
     
     unpackedStr = unpackedArray.decode("ascii")
     return unpackedStr

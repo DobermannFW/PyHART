@@ -5,29 +5,23 @@
 ##
 ###############################################################################
 ###############################################################################
-from enum import IntEnum
-import CommCore
-import Comm
 import struct
-import Utils
-import Packet
+from PyHART.COMMUNICATION.Utils import *
+from PyHART.COMMUNICATION.Common import *
+from PyHART.COMMUNICATION.Packet import HartPacket
 
-class HART_REVISION(IntEnum):
-    FIVE = 5
-    SIX = 6
-    SEVEN = 7
 
-UID_SIZE = 3
+class HartDevice:
+    UID_SIZE = 3
 
-class HartDevice():
     def __init__(self):
         self.manufacturerId = 0
         self.deviceType = 0
         self.deviceRevision = 0
         self.reqPreambles = 0
-        self.uid = bytearray(UID_SIZE)
+        self.uid = bytearray(HartDevice.UID_SIZE)
         self.pollAddr = 0
-        self.longAddress = bytearray(Packet.ADDR_SIZE)
+        self.longAddress = bytearray(HartPacket.ADDR_SIZE)
         self.hartRev = HART_REVISION.SEVEN
         self.isInBurst = False
         self.deviceProfile = 0
@@ -62,10 +56,10 @@ class HartDevice():
         return '{0:d}'.format(self.hartRev)
         
     def ProfileStr(self):
-        return Utils.GetProfileString(self.deviceProfile)
+        return GetProfileString(self.deviceProfile)
         
     def DeviceFlagsStr(self):
-        allflags = Utils.GetDevFlags(self.flags)
+        allflags = GetDevFlags(self.flags)
         flagsStr = ""
         for idx in range(len(allflags)):
             flagsStr += allflags[idx]
@@ -74,7 +68,7 @@ class HartDevice():
         return flagsStr
         
     def ExtendedFieldDevStatusStr(self):
-        allStat = Utils.GetExtendedFieldDeviceStatus(self.ExtendedFieldDevStatus)
+        allStat = GetExtendedFieldDeviceStatus(self.ExtendedFieldDevStatus)
         str = ""
         if (len(allStat) > 0):
             for idx in range(len(allStat)):
@@ -86,10 +80,10 @@ class HartDevice():
         return str 
 
     def PhysicalSignalingCodeStr(self):
-        return  Utils.GetSignalString(self.HardwareRevisionLevelPhysicalSignalingCode)
+        return  GetSignalString(self.HardwareRevisionLevelPhysicalSignalingCode)
         
     def HardwareRevisionLevelStr(self):
-        return '{0:d}'.format(Utils.GetHardwareRevisionLevel(self.HardwareRevisionLevelPhysicalSignalingCode))
+        return '{0:d}'.format(GetHardwareRevisionLevel(self.HardwareRevisionLevelPhysicalSignalingCode))
     
     def SwRevisionLevelStr(self):
         return '{0:d}'.format(self.SwRevisionLevel)
@@ -117,7 +111,7 @@ class HartDevice():
         
     def SetLongAddress(self, MasterType):
         if (self.hartRev == HART_REVISION.SEVEN):
-            if (MasterType == CommCore.MASTER_TYPE.PRIMARY):
+            if (MasterType == MASTER_TYPE.PRIMARY):
                 self.longAddress[0] = ((0x3F00 & self.deviceType) >> 8)
                 self.longAddress[0] |= 0x80
                 self.longAddress[1] = (self.deviceType & 0x00FF)
@@ -125,7 +119,7 @@ class HartDevice():
                 self.longAddress[0] = ((0x3F00 & self.deviceType) >> 8)
                 self.longAddress[1] = (self.deviceType & 0x00FF)
         else:
-            if (MasterType == CommCore.MASTER_TYPE.PRIMARY):
+            if (MasterType == MASTER_TYPE.PRIMARY):
                 self.longAddress[0] = ((0x3F & self.manufacturerId) | 0x80)
                 self.longAddress[1] = self.deviceType
             else:
@@ -160,7 +154,7 @@ class HartDevice():
         self.reqPreambles = rxPacket.data[3]
         self.SetLongAddress(MasterType)
         
-        if (Utils.isInBurst(rxPacket.address[0])):
+        if (isInBurst(rxPacket.address[0])):
             self.isInBurst = True
         else:
             self.isInBurst = False
@@ -191,4 +185,3 @@ class HartDevice():
             print("      Num of Variables: " + self.NumOfVarStr())
             print("               Profile: " + self.ProfileStr())
             print("ExtendedFieldDevStatus: " + self.ExtendedFieldDevStatusStr())
-        

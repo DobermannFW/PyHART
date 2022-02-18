@@ -6,33 +6,33 @@
 ###############################################################################
 ###############################################################################
 import struct
-import Device
-import CommCore
-import Utils
+from PyHART.COMMUNICATION.Utils import *
+from PyHART.COMMUNICATION.Common import *
 
-ADDR_SIZE = 5
-EXT_SIZE = 3
-DATA_SIZE = 512
-MAX_PREAMBLE_NUM = 20
-MIN_PREAMBLE_NUM = 3
-PREAMBLE = 255
-LONG_COMMAND_INDICATOR = 31
 
-class HartPacket():
+class HartPacket:
+    ADDR_SIZE = 5
+    EXT_SIZE = 3
+    DATA_SIZE = 512
+    MAX_PREAMBLE_NUM = 20
+    MIN_PREAMBLE_NUM = 3
+    PREAMBLE = 255
+    LONG_COMMAND_INDICATOR = 31
+
     def __init__(self):
         self.preamblesCnt = 0
         self.delimiter = 0
-        self.address = bytearray(ADDR_SIZE)
-        self.expansionBytes = bytearray(EXT_SIZE)
+        self.address = bytearray(HartPacket.ADDR_SIZE)
+        self.expansionBytes = bytearray(HartPacket.EXT_SIZE)
         self.command = 0
         self.dataLen = 0
         self.resCode = 0
         self.devStatus = 0
-        self.data = bytearray(DATA_SIZE)
+        self.data = bytearray(HartPacket.DATA_SIZE)
         self.checksum = 0
         
     def GetLongCommand(self, command, data):
-        if ((command == LONG_COMMAND_INDICATOR) and (len(data) >= 2)):
+        if ((command == HartPacket.LONG_COMMAND_INDICATOR) and (len(data) >= 2)):
             cmdByte = bytearray(2)
             return (struct.unpack_from(">H", data, 0))[0]
             
@@ -63,7 +63,7 @@ class HartPacket():
         checksum = self.delimiter
         
         if (self.isLongAddressPacket()):
-            for idx in range(ADDR_SIZE):
+            for idx in range(HartPacket.ADDR_SIZE):
                 checksum ^= self.address[idx]
         else:
             checksum ^= self.address[0]
@@ -93,7 +93,7 @@ class HartPacket():
         txFrame = bytearray()
         
         for pos in range(self.preamblesCnt):
-            txFrame.append(PREAMBLE)
+            txFrame.append(HartPacket.PREAMBLE)
             
         txFrame.append(self.delimiter)
         
@@ -107,7 +107,7 @@ class HartPacket():
             txFrame.append(self.expansionBytes[pos])
         
         if (self.command > 255):
-            txFrame.append(LONG_COMMAND_INDICATOR)
+            txFrame.append(HartPacket.LONG_COMMAND_INDICATOR)
         else:
             txFrame.append(self.command)
         txFrame.append(self.dataLen)
@@ -145,14 +145,14 @@ class HartPacket():
         
     def PrepareTxPacket(self, OnlineDevice, MasterType, isShortAddr, pollAddr, txData, txDataLen, _command, UseBroadcastAddress):
         if (OnlineDevice == None):
-            self.preamblesCnt = MAX_PREAMBLE_NUM
+            self.preamblesCnt = HartPacket.MAX_PREAMBLE_NUM
         else:
             self.preamblesCnt = OnlineDevice.reqPreambles
             
         if (isShortAddr == True):
             self.delimiter = 2
 
-            if (MasterType == CommCore.MASTER_TYPE.PRIMARY):
+            if (MasterType == MASTER_TYPE.PRIMARY):
                 self.address[0] = (0x80 | pollAddr)
             else:
                 self.address[0] = pollAddr
@@ -168,8 +168,8 @@ class HartPacket():
                     self.address[3] = 0
                     self.address[4] = 0            
         
-        if ((_command > 255) and (OnlineDevice != None) and ((OnlineDevice.hartRev == Device.HART_REVISION.SIX) or (OnlineDevice.hartRev == Device.HART_REVISION.SEVEN))):
-            self.command = LONG_COMMAND_INDICATOR
+        if ((_command > 255) and (OnlineDevice != None) and ((OnlineDevice.hartRev == HART_REVISION.SIX) or (OnlineDevice.hartRev == HART_REVISION.SEVEN))):
+            self.command = HartPacket.LONG_COMMAND_INDICATOR
             self.dataLen = 2
             if ((txDataLen > 0) and (txData != None)):
                 for idx in range(txDataLen):
@@ -197,7 +197,7 @@ class HartPacket():
         idx = 0
 
         self.preamblesCnt = 0
-        while (txFrame[idx] == PREAMBLE):
+        while (txFrame[idx] == HartPacket.PREAMBLE):
             self.preamblesCnt += 1
             idx += 1
 
@@ -236,54 +236,54 @@ class HartPacket():
         self.checksum = txFrame[idx]
 
     def printPkt(self, step, OnlineDevice):
-        if (step >= CommCore.STEP_RX.STEP_PREAMBLES):
+        if (step >= STEP_RX.STEP_PREAMBLES):
             print("Preambles Count: {0:d}".format(self.preamblesCnt))
             
-        if (step >= CommCore.STEP_RX.STEP_DELIMITER):
+        if (step >= STEP_RX.STEP_DELIMITER):
             print("      Delimiter: 0x{0:02X}".format(self.delimiter))
             
-        if ((step >= CommCore.STEP_RX.STEP_SHORT_ADDRESS) or (step >= CommCore.STEP_RX.STEP_LONG_ADDRESS)):
+        if ((step >= STEP_RX.STEP_SHORT_ADDRESS) or (step >= STEP_RX.STEP_LONG_ADDRESS)):
             if (self.isLongAddressPacket()):
-                print ("        Address: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(self.address[0:ADDR_SIZE])))
+                print ("        Address: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(self.address[0:HartPacket.ADDR_SIZE])))
             else:
                 print("        Address: 0x{0:02X}".format(self.address[0]))
         
-        if (step >= CommCore.STEP_RX.STEP_EXPANSION):
+        if (step >= STEP_RX.STEP_EXPANSION):
             expansionCnt = self.getExpansionBytesCount()
             if (expansionCnt > 0):
                 print ("      Expansion: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(self.expansionBytes[0:expansionCnt])))
             
-        if (step >= CommCore.STEP_RX.STEP_COMMAND):
+        if (step >= STEP_RX.STEP_COMMAND):
             print("        Command: {0:d}".format(self.command))
             
-        if (step >= CommCore.STEP_RX.STEP_DATA_LEN):
+        if (step >= STEP_RX.STEP_DATA_LEN):
             print("    Data Length: {0:d}".format(self.dataLen))
             
         if (self.isTxPacket() == False):
-            if (step >= CommCore.STEP_RX.STEP_RESPONSE_CODE):
+            if (step >= STEP_RX.STEP_RESPONSE_CODE):
                 if (self.resCode == 0):
                     print("  Response Code: {0:d}".format(self.resCode))
                 else:
                     print("  Response Code: {0:d}".format(self.resCode) + " - NOT OK -");
 
-                errors = Utils.hasCommunicationErrors(self.resCode)
+                errors = hasCommunicationErrors(self.resCode)
                 l = len(errors)
                 for idx in range(l):
                     print("                 " + errors[idx])
 
-            if (step >= CommCore.STEP_RX.STEP_DEVICE_STATUS):
+            if (step >= STEP_RX.STEP_DEVICE_STATUS):
                 print("  Device Status: 0x{0:02X}".format(self.devStatus))
-                LastDevStatus = Utils.GetDevStatusDesc(self.devStatus)
+                LastDevStatus = GetDevStatusDesc(self.devStatus)
                 l = len(LastDevStatus)
                 for idx in range (l):
                     print("                 " + LastDevStatus[idx])            
         
-        if ((step >= CommCore.STEP_RX.STEP_DATA) and (self.dataLen > 0)):
+        if ((step >= STEP_RX.STEP_DATA) and (self.dataLen > 0)):
             startIdx = 0
             longCmd = 0x0000
             
-            if ((OnlineDevice != None) and ((OnlineDevice.hartRev == Device.HART_REVISION.SIX) or (OnlineDevice.hartRev == Device.HART_REVISION.SEVEN))):
-                if (self.command == LONG_COMMAND_INDICATOR):
+            if ((OnlineDevice != None) and ((OnlineDevice.hartRev == HART_REVISION.SIX) or (OnlineDevice.hartRev == HART_REVISION.SEVEN))):
+                if (self.command == HartPacket.LONG_COMMAND_INDICATOR):
                     if (self.isTxPacket() == False):
                         startIdx = 2
                         longCmd = self.GetLongCommand(self.command, self.data)
@@ -311,13 +311,10 @@ class HartPacket():
                 else:
                     print ("           Data: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(self.data[startIdx:self.dataLen])))
         
-        if (step >= CommCore.STEP_RX.STEP_CHECKSUM):
+        if (step >= STEP_RX.STEP_CHECKSUM):
             print("       Checksum: 0x{0:02X}".format(self.checksum))
         
-        if ((step >= CommCore.STEP_RX.STEP_SHORT_ADDRESS) or (step >= CommCore.STEP_RX.STEP_LONG_ADDRESS)):
-            if (Utils.isInBurst(self.address[0])):
+        if ((step >= STEP_RX.STEP_SHORT_ADDRESS) or (step >= STEP_RX.STEP_LONG_ADDRESS)):
+            if (isInBurst(self.address[0])):
                 print ("- BURST ON -")
-
-
-
 

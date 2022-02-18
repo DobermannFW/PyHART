@@ -5,10 +5,8 @@
 ##
 ###############################################################################
 ###############################################################################
-import sys
-import serial
 from serial.tools import list_ports
-import CommCore
+from PyHART.COMMUNICATION.Common import *
 
 
 """
@@ -17,10 +15,10 @@ GET PY_HART REVISION
 -------------------------------------------------------------------------------
 """
 # MAJOR HART PROTOCOL REVISION
-# PyHART MAJOR REVISION (eg. add master state machine)
-# PyHART MINOR REVISION (usually handles back compatibility)
+# PyHART MAJOR REVISION
+# PyHART MINOR REVISION
 def PyHART_Revision():
-    return "7.1.3"
+    return "7.2.2"
 
 
 """
@@ -52,16 +50,15 @@ COM PORTS
 # This function returns the list of the ports and the count of found com ports.
 #
 def ListCOMPort(addQuitOption):
-    print("-------------------------------------------------------------------------------")
-    print("Available COM ports")
+    print("\nAvailable COM ports")
     i = 1
     listOfComPorts = list_ports.comports()
     for portsInfo in enumerate(listOfComPorts):
-        print("  {0}:\t{1} - {2}".format(i, portsInfo[1].device, portsInfo[1].description))
+        print("  {0}: ".format(i) + "{0} - {1}".format(portsInfo[1].device, portsInfo[1].description))
         i += 1
 
     if (addQuitOption == True):
-        print("  {0}\tQuit".format(i))
+        print("  {0}: ".format(i) + "Quit")
 
     return (i - 1), listOfComPorts
 
@@ -515,10 +512,10 @@ PRINT DEVICE
 -------------------------------------------------------------------------------
 """
 #
-# Print device information using previous functions
+# Shows device information using previous functions
 #
 def PrintDevice(dev, hart):
-    print("-------------------------------------------------------------------------------")
+    #print("-------------------------------------------------------------------------------")
     print("[DEVICE]")
     dev.printDev()
     print("\n")
@@ -532,35 +529,50 @@ PRINT PACKET
 # Print a packet, useful if wantToPrint is False in Comm
 #
 def PrintPacket(packet, hart):            
-    if (packet.isTxPacket() == False) and (packet.isBurstPacket() == False) and (((hart.hart.masterType == CommCore.MASTER_TYPE.PRIMARY) and ((packet.address[0] & 0x80) == 0)) or ((hart.hart.masterType == CommCore.MASTER_TYPE.SECONDARY) and ((packet.address[0] & 0x80) > 0))):
-        print("-------------------------------------------------------------------------------")
+    if (packet.isTxPacket() == False) and (packet.isBurstPacket() == False) and (((hart.masterType == MASTER_TYPE.PRIMARY) and ((packet.address[0] & 0x80) == 0)) or ((hart.masterType == MASTER_TYPE.SECONDARY) and ((packet.address[0] & 0x80) > 0))):
+        #print("-------------------------------------------------------------------------------")
         print("[SLAVE TO MASTER - OACK]")
-        packet.printPkt(CommCore.STEP_RX.STEP_CHECKSUM, hart.OnlineDevice())
+        packet.printPkt(STEP_RX.STEP_CHECKSUM, hart.OnlineDevice)
         
     elif (packet.isTxPacket() == False) and (packet.isBurstPacket() == False):
-        print("-------------------------------------------------------------------------------")
+        #print("-------------------------------------------------------------------------------")
         print("[SLAVE TO MASTER - ACK]")
-        packet.printPkt(CommCore.STEP_RX.STEP_CHECKSUM, hart.OnlineDevice())
+        packet.printPkt(STEP_RX.STEP_CHECKSUM, hart.OnlineDevice)
         
     elif (packet.isBurstPacket() == True):
-        print("-------------------------------------------------------------------------------")
-        print("[BURST FRAME - BACK]")
-        packet.printPkt(CommCore.STEP_RX.STEP_CHECKSUM, hart.OnlineDevice())
+        if (hart.masterType == MASTER_TYPE.PRIMARY):
+            if ((packet.address[0] & 0x80) == 1):
+                #print("-------------------------------------------------------------------------------")
+                print("[BURST FRAME - BACK]")
+                packet.printPkt(STEP_RX.STEP_CHECKSUM, hart.OnlineDevice)
+            else:
+                #print("-------------------------------------------------------------------------------")
+                print("[BURST FRAME - OBACK]")
+                packet.printPkt(STEP_RX.STEP_CHECKSUM, hart.OnlineDevice)
+        else:
+            if ((packet.address[0] & 0x80) == 0):
+                #print("-------------------------------------------------------------------------------")
+                print("[BURST FRAME - BACK]")
+                packet.printPkt(STEP_RX.STEP_CHECKSUM, hart.OnlineDevice)
+            else:
+                #print("-------------------------------------------------------------------------------")
+                print("[BURST FRAME - OBACK]")
+                packet.printPkt(STEP_RX.STEP_CHECKSUM, hart.OnlineDevice)
         
-    elif (packet.isTxPacket() == True) and (((hart.hart.masterType == CommCore.MASTER_TYPE.PRIMARY) and ((packet.address[0] & 0x80) == 0)) or ((hart.hart.masterType == CommCore.MASTER_TYPE.SECONDARY) and ((packet.address[0] & 0x80) > 0))):
-        print("-------------------------------------------------------------------------------")
+    elif (packet.isTxPacket() == True) and (((hart.masterType == MASTER_TYPE.PRIMARY) and ((packet.address[0] & 0x80) == 0)) or ((hart.masterType == MASTER_TYPE.SECONDARY) and ((packet.address[0] & 0x80) > 0))):
+        #print("-------------------------------------------------------------------------------")
         print("[MASTER TO SLAVE - OSTX]")
-        packet.printPkt(CommCore.STEP_RX.STEP_CHECKSUM, hart.OnlineDevice())
+        packet.printPkt(STEP_RX.STEP_CHECKSUM, hart.OnlineDevice)
     
     elif (packet.isTxPacket() == True):
-        print("-------------------------------------------------------------------------------")
+        #print("-------------------------------------------------------------------------------")
         print("[MASTER TO SLAVE - STX]")
-        packet.printPkt(CommCore.STEP_RX.STEP_CHECKSUM, hart.OnlineDevice())
+        packet.printPkt(STEP_RX.STEP_CHECKSUM, hart.OnlineDevice)
         
     else:
-        print("-------------------------------------------------------------------------------")
+        #print("-------------------------------------------------------------------------------")
         print("[UNKNOWN PACKET]")
-        packet.printPkt(CommCore.STEP_RX.STEP_CHECKSUM, hart.OnlineDevice())
+        packet.printPkt(STEP_RX.STEP_CHECKSUM, hart.OnlineDevice)
 
     print("\n")
     
@@ -593,6 +605,25 @@ def GetCommErrorString(error):
 
 """
 -------------------------------------------------------------------------------
+PACKED ASCII CHARACTER SET
+-------------------------------------------------------------------------------
+"""
+def print_packedascii_charset():
+    print('@  A  B  C  D  E  F  G  H  I  J  K  L  M  N  O')
+    print('P  Q  R  S  T  U  V  W  X  Y  Z  [  \  ]  ^  _')
+    print('SP !  \"  #  $  %  &amp;  \'  (  )  *  +  ,  -  .  /')
+    print('0  1  2  3  4  5  6  7  8  9  :  ;  &lt;  =  &gt;  ?')
+
+def get_packedascii_charset():
+    charset = ['@',  'A',  'B',  'C',  'D',  'E',  'F',  'G',  'H',  'I',  'J',  'K',  'L',  'M',  'N',  'O',
+               'P', 'Q',  'R',  'S',  'T',  'U',  'V',  'W',  'X',  'Y',  'Z',  '[',  '\\',  ']',  '^',  '_',
+               ' ', '!',  '"',  '#',  '$',  '%',  '&',  '\'',  '(',  ')',  '*',  '+',  ',',  '-',  '.',  '/',
+               '0',  '1',  '2',  '3',  '4',  '5',  '6',  '7',  '8',  '9',  ':',  ';',  '<',  '=',  '>',  '?']
+    return charset
+
+
+"""
+-------------------------------------------------------------------------------
 HART COMMANDS EXEC
 -------------------------------------------------------------------------------
 """
@@ -602,16 +633,14 @@ HART COMMANDS EXEC
 def HartCommand(hart, cmdNum, txData):
     retStatus = False
     CommunicationResult, SentPacket, RecvPacket = hart.PerformTransaction(cmdNum, txData)
-    if (CommunicationResult != None):
-        if (CommunicationResult != CommCore.CommResult.Ok):    
-            print("HART command " + str(cmdNum) + ": " + GetCommErrorString(CommunicationResult))
+    if (CommunicationResult != None) and (CommunicationResult != CommResult.Ok):    
+        print("HART command " + str(cmdNum) + ": " + GetCommErrorString(CommunicationResult))
+    else:
+        if (RecvPacket != None) and (RecvPacket.resCode != 0):
+            print("HART command " + str(cmdNum) + ": " + "Response Code = " + str(RecvPacket.resCode))
+        elif (RecvPacket == None):
+            print("HART command " + str(cmdNum) + ": " + "Unknown Error!")
         else:
-            if (RecvPacket != None) and (RecvPacket.resCode != 0):
-                print("HART command " + str(cmdNum) + ": Response Code = " + str(RecvPacket.resCode))
-            elif (RecvPacket == None):
-                print("HART command " + str(cmdNum) + ": Unknown Error!")
-            else:
-                retStatus = True
+            retStatus = True
     
     return retStatus, CommunicationResult, SentPacket, RecvPacket
-
