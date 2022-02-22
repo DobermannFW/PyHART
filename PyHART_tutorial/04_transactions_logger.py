@@ -13,7 +13,7 @@ import sys
 sys.path.append('../')
 from PyHART.COMMUNICATION.CommCore import *
 from PyHART.COMMUNICATION.Utils import *
-from PyHART.COMMUNICATION.System import *
+from PyHART.COMMUNICATION.Common import *
 from time import sleep
 
 
