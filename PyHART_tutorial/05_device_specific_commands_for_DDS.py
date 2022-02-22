@@ -19,7 +19,7 @@ sys.path.append('../')
 from PyHART.COMMUNICATION.CommCore import *
 from PyHART.COMMUNICATION.Types import *
 from PyHART.COMMUNICATION.Utils import *
-from PyHART.COMMUNICATION.System import *
+from PyHART.COMMUNICATION.Common import *
 
 #
 # Procedure to list communication ports
