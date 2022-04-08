@@ -1,6 +1,7 @@
 #
 # Sometimes, for testing purpose you need to change address, delimiter
-# and other field of the HART frame.
+# and other field of the HART frame, send a frame splitted in two parts to test byte gap,
+# send a wrong crc and so on...
 # Here is shown how to do this.
 #
 
@@ -20,7 +21,7 @@ sys.path.append('../')
 from PyHART.COMMUNICATION.CommCore import *
 from PyHART.COMMUNICATION.Utils import *
 from PyHART.COMMUNICATION.Packet import *
-from PyHART.COMMUNICATION.Common import *
+from PyHART.COMMUNICATION.System import *
 
 #
 # Procedure to list communication ports
@@ -127,6 +128,23 @@ pkt.data = bytearray([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 pkt.checksum = pkt.ComputeChecksum()
 
 txFrame = pkt.ToFrame()
+CommunicationResult, SentPacket, RecvPacket = hart.SendCustomFrame(txFrame)
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# send data at random without receive any response from device
+#
+txFrame = bytearray([0x45, 0xFF, 0x02, 0x88])
+CommunicationResult, SentPacket, RecvPacket = hart.SendCustomFrame(txFrame)
+
+txFrame = bytearray([0x45, 0xFF, 0x02, 0x88, 0x45, 0xFF, 0x02, 0x88, 0x45, 0xFF, 0x02, 0x88, 0x45, 0xFF, 0x02, 0x88])
+CommunicationResult, SentPacket, RecvPacket = hart.SendCustomFrame(txFrame)
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Send command zero with wrong checksum byte
+#
+txFrame = bytearray([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x02, 0x80, 0x00, 0x00, 0x56])
 CommunicationResult, SentPacket, RecvPacket = hart.SendCustomFrame(txFrame)
 
 
