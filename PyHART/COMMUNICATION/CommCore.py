@@ -797,18 +797,29 @@ class HartMaster:
         return self.CommunicationResult, txPacket, self.RecvPacket
 
     def SendFrm(self, txFrame):
-        self.WriteOnSerial(txFrame, len(txFrame))
-        
-        txPacket = HartPacket()
-        txPacket.FillFromTxFrame(txFrame)
-        self.SendFramesentEvent(txPacket)
+        if (txFrame is not None) and (len(txFrame) > 0):
+            self.WriteOnSerial(txFrame, len(txFrame))
+            txPacket = None
+            
+            try:
+                txPacket = HartPacket()
+                txPacket.FillFromTxFrame(txFrame)
+                self.SendFramesentEvent(txPacket)
 
-        if (self.runningOnRTOS == False):
-            self.WaitForResponseNoRTOS()
+                if (self.runningOnRTOS == False):
+                    self.WaitForResponseNoRTOS()
+                else:
+                    self.WaitForResponseRTOS()
+            except Exception as exc:
+                self.CommunicationResult = CommResult.NoResponse
+                print("\n[MASTER TO SLAVE - STX] - {0}".format(datetime.now(tz=None)))
+                print ("Sent bytes: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(txFrame[0:len(txFrame)])))
+                print ('\n')
+            
+            return self.CommunicationResult, txPacket, self.RecvPacket
         else:
-            self.WaitForResponseRTOS()
-        
-        return self.CommunicationResult, txPacket, self.RecvPacket
+            print("\n[MASTER TO SLAVE - STX] - {0}".format(datetime.now(tz=None)))
+            print ('Frame to send is None or Empty\n\n')
 
     def SendShortCommandZero(self, pollAddr):
         txPacket = HartPacket()
