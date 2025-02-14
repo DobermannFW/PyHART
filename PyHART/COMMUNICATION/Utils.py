@@ -766,7 +766,7 @@ PACKED ASCII CHARACTER SET
 def print_packedascii_charset():
     with globalPrintActivityLock:
         print('@  A  B  C  D  E  F  G  H  I  J  K  L  M  N  O')
-        print('P  Q  R  S  T  U  V  W  X  Y  Z  [  \  ]  ^  _')
+        print('P  Q  R  S  T  U  V  W  X  Y  Z  [  \\  ]  ^  _')
         print('SPACE !  \"  #  $  %  &  \'  (  )  *  +  ,  -  .  /')
         print('0  1  2  3  4  5  6  7  8  9  :  ;  <  =  >  ?')
 
