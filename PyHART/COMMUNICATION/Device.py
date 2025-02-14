@@ -6,10 +6,9 @@
 ###############################################################################
 ###############################################################################
 import struct
-from PyHART.COMMUNICATION.Utils import *
-from PyHART.COMMUNICATION.Common import *
-from PyHART.COMMUNICATION.Packet import HartPacket
-
+from PyHART.HARTcore.PyHARTengine.Utils import *
+from PyHART.HARTcore.PyHARTengine.Common import *
+from PyHART.HARTcore.PyHARTengine.Packet import HartPacket
 
 class HartDevice:
     UID_SIZE = 3
@@ -26,10 +25,12 @@ class HartDevice:
         self.isInBurst = False
         self.deviceProfile = 0
         self.flags = 0
-        self.numOfVar = 0
+        self.LastDeviceVariableCode = 0
         self.ExtendedFieldDevStatus = 0
         self.HardwareRevisionLevelPhysicalSignalingCode = 0
         self.SwRevisionLevel = 0
+        self.txPreambles = 0
+        self.configChangeCounter = 0
     
     def manufacturerIdStr(self):
         return '0x{0:04X}'.format(self.manufacturerId)
@@ -42,7 +43,13 @@ class HartDevice:
         
     def ReqPreamblesStr(self):
         return '{0:d}'.format(self.reqPreambles)
-        
+    
+    def TxPreamblesStr(self):
+        return '{0:d}'.format(self.txPreambles)
+    
+    def ConfigChangeCounterStr(self):
+        return '{0:d}'.format(self.configChangeCounter)
+
     def UidStr(self):
         return '0x{0:02X}, 0x{1:02X}, 0x{2:02X}'.format(self.uid[0], self.uid[1], self.uid[2])
         
@@ -60,21 +67,21 @@ class HartDevice:
         
     def DeviceFlagsStr(self):
         allflags = GetDevFlags(self.flags)
-        flagsStr = ""
+        flagsStr = ''
         for idx in range(len(allflags)):
             flagsStr += allflags[idx]
             if (idx < (len(allflags) - 1)):
-               flagsStr += ", " 
+               flagsStr += ', ' 
         return flagsStr
         
     def ExtendedFieldDevStatusStr(self):
         allStat = GetExtendedFieldDeviceStatus(self.ExtendedFieldDevStatus)
-        str = ""
+        str = ''
         if (len(allStat) > 0):
             for idx in range(len(allStat)):
                 str += allStat[idx]
                 if (idx < (len(allStat) - 1)):
-                   str += ", "
+                   str += ', '
         else:
             str = '0x{0:02X}'.format(self.ExtendedFieldDevStatus)
         return str 
@@ -88,8 +95,8 @@ class HartDevice:
     def SwRevisionLevelStr(self):
         return '{0:d}'.format(self.SwRevisionLevel)
     
-    def NumOfVarStr(self):
-        return '{0:d}'.format(self.numOfVar)
+    def LastDeviceVariableCodeStr(self):
+        return '{0:d}'.format(self.LastDeviceVariableCode)
         
     def Clone(self):
         dev = HartDevice()
@@ -105,8 +112,10 @@ class HartDevice:
         dev.deviceProfile = self.deviceProfile
         dev.flags = self.flags
         dev.ExtendedFieldDevStatus = self.ExtendedFieldDevStatus
-        dev.numOfVar = self.numOfVar
+        dev.LastDeviceVariableCode = self.LastDeviceVariableCode
         dev.HardwareRevisionLevelPhysicalSignalingCode = self.HardwareRevisionLevelPhysicalSignalingCode
+        dev.txPreambles = self.txPreambles
+        dev.configChangeCounter = self.configChangeCounter
         return dev
         
     def SetLongAddress(self, MasterType):
@@ -142,8 +151,8 @@ class HartDevice:
             self.deviceType = rxPacket.data[2]
             self.manufacturerId = rxPacket.data[1]
         elif (self.hartRev == HART_REVISION.SEVEN):
-            self.deviceType = (struct.unpack_from(">H", rxPacket.data, 1))[0]
-            self.manufacturerId = (struct.unpack_from(">H", rxPacket.data, 17))[0]
+            self.deviceType = (struct.unpack_from('>H', rxPacket.data, 1))[0]
+            self.manufacturerId = (struct.unpack_from('>H', rxPacket.data, 17))[0]
             
         self.pollAddr = rxPacket.address[0] & 0x3F
             
@@ -166,22 +175,28 @@ class HartDevice:
         if ((self.hartRev == HART_REVISION.SIX) or (self.hartRev == HART_REVISION.SEVEN)):
             self.deviceProfile = rxPacket.data[21]
             self.ExtendedFieldDevStatus = rxPacket.data[16]
-            self.numOfVar = rxPacket.data[13]
+            self.LastDeviceVariableCode = rxPacket.data[13]
+        
+        self.txPreambles = rxPacket.data[12]
+        self.configChangeCounter = (struct.unpack(">H", rxPacket.data[14:16]))[0]
 
     def printDev(self):
-        print("       Manufacturer ID: " + self.manufacturerIdStr())
-        print("           Device Type: " + self.DeviceTypeStr())
-        print("       Device Revision: " + self.DeviceRevisionStr()) 
-        print("     Request Preambles: " + self.ReqPreamblesStr()) 
-        print("                   UID: " + self.UidStr())
-        print("       Polling Address: " + self.PollAddrStr()) 
-        print("          Long Address: " + self.LongAddressStr())
-        print("         HART Revision: " + self.HartRevStr())
-        print("                 Flags: " + self.DeviceFlagsStr())
-        print(" SoftwareRevisionLevel: " + self.SwRevisionLevelStr())
-        print(" HardwareRevisionLevel: " + self.HardwareRevisionLevelStr())
-        print(" PhysicalSignalingCode: " + self.PhysicalSignalingCodeStr())
+        print('          Manufacturer ID: ' + self.manufacturerIdStr())
+        print('              Device Type: ' + self.DeviceTypeStr())
+        print('          Device Revision: ' + self.DeviceRevisionStr()) 
+        print('        Request Preambles: ' + self.ReqPreamblesStr()) 
+        print('       Transmit Preambles: ' + self.TxPreamblesStr()) 
+        print('                      UID: ' + self.UidStr())
+        print('          Polling Address: ' + self.PollAddrStr()) 
+        print('             Long Address: ' + self.LongAddressStr())
+        print('            HART Revision: ' + self.HartRevStr())
+        print('                    Flags: ' + self.DeviceFlagsStr())
+        print('    SoftwareRevisionLevel: ' + self.SwRevisionLevelStr())
+        print('    HardwareRevisionLevel: ' + self.HardwareRevisionLevelStr())
+        print('    PhysicalSignalingCode: ' + self.PhysicalSignalingCodeStr())
+
         if ((self.hartRev == HART_REVISION.SIX) or (self.hartRev == HART_REVISION.SEVEN)):
-            print("      Num of Variables: " + self.NumOfVarStr())
-            print("               Profile: " + self.ProfileStr())
-            print("ExtendedFieldDevStatus: " + self.ExtendedFieldDevStatusStr())
+            print('Last Device Variable Code: ' + self.LastDeviceVariableCodeStr())
+            print('                  Profile: ' + self.ProfileStr())
+            print('   ExtendedFieldDevStatus: ' + self.ExtendedFieldDevStatusStr())
+            print('    Config Change Counter: ' + self.ConfigChangeCounterStr())
