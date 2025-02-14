@@ -6,9 +6,9 @@
 ###############################################################################
 ###############################################################################
 import struct
-from PyHART.HARTcore.PyHARTengine.Utils import *
-from PyHART.HARTcore.PyHARTengine.Common import *
-from PyHART.HARTcore.PyHARTengine.Packet import HartPacket
+from PyHART.COMMUNICATION.Utils import *
+from PyHART.COMMUNICATION.Common import *
+from PyHART.COMMUNICATION.Packet import HartPacket
 
 class HartDevice:
     UID_SIZE = 3
