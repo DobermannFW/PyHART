@@ -110,19 +110,19 @@ def BytearrayToDateString(dateArray):
 # date string to array
 #
 def DateStringToBytearray(dateString):
-    return bytearray([int(dateString[:2]), int(dateString[3:-5]), (int(dateString[6:]) - 1900)])
+    return bytearray([int(dateString[:2]), int(dateString[3:5]), (int(dateString[6:]) - 1900)])
 
 #
 # array to Time
 #   
 def BytearrayToTimeString(timeArray):
-    return "{0:f}".format((BytearrayToUInt(timeArray) * 0.3125))
+    return "{0:f}".format((BytearrayToUInt(timeArray) * 0.03125))
 
 #
 # Time to array
 #
 def TimeStringToBytearray(timeString):
-    return UIntToBytearray(int(float(timeString) / 0.3125))
+    return UIntToBytearray(int(float(timeString) / 0.03125))
 
 
 """
