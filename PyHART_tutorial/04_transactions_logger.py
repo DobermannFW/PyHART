@@ -6,30 +6,52 @@
 
 
 #
-# Standard import. Append the path of PyHART. Since this file is in the folder PyHART_tutorial,
-# just go back one folder.
+# Standard import.
 #
 import sys
+
+#
+# adjust this path base on script location
+#
 sys.path.append('../')
+
 from PyHART.COMMUNICATION.CommCore import *
+from PyHART.COMMUNICATION.Types import *
 from PyHART.COMMUNICATION.Utils import *
+from PyHART.COMMUNICATION.Device import *
+from PyHART.COMMUNICATION.Packet import *
 from PyHART.COMMUNICATION.Common import *
 from time import sleep
+import keyboard
+
+
+#
+# Variables and keyboard event to handle keypressed used to break infinite cycle
+#
+stop = False
+
+def OnHotKey(event):
+    global stop
+    stop = True
+
+keyboard.add_hotkey('ctrl+q', OnHotKey)
 
 
 #
 # Procedure to list communication ports
 #
-count, listOfComPorts = ListCOMPort(True)
+count, listOfComPorts = ListCOMPort(additionalOptions=['Quit'])
 comport = None
 selection = 0
 while (comport == None) and (selection != (count + 1)):
     print ('\nSelect the communication port.') 
-    print('Insert the number related to your choice and press enter.')
+    choice = input('Insert the number related to your choice and press enter: ')
     try:
-        selection = int(input())
+        selection = int(choice)
     except:
         selection = 0
+        
+    print('') # new line
     
     if (selection == (count + 1)):
         print('Leaving application...')
@@ -38,35 +60,27 @@ while (comport == None) and (selection != (count + 1)):
     comport = GetCOMPort(selection, listOfComPorts)
 
 
-#
-# Instantiates and starts the communication object
-# Here it is very important to define a log file and ensure that 
-# 'autoPrintTransactions' is set to 'True' and that 'whereToPrint' is set 
-# to 'CommCore.WhereToPrint.BOTH' (Terminal and file) or 
-# 'CommCore.WhereToPrint.FILE' (log only in the log file).
-#
 hart = HartMaster(comport, \
                   MASTER_TYPE.PRIMARY, \
                   num_retry = 2, \
                   retriesOnPolling = False, \
                   autoPrintTransactions = True, \
                   whereToPrint = WhereToPrint.BOTH, \
-                  logFile = 'terminalLog.log', \
-                  rt_os = False, \
-                  manageRtsCts = None)
+                  logFile = 'terminalLog.log')
 
 hart.Start()
 
-while True:
-    sleep(5) # let time to other threads
-    
-    # @TODO
-    # To interrupt this infinite cycle you have to implement a 'read keypress'
-    # mechanism, for example if the user press enter break the cycle.
+# All HART communications will be logged.
+# Burst, Other master and slave communications...
+# You need to have a parallel modem connection.
+
+print('Press \'CTRL+Q\' to terminate operations')
+
+while stop == False:
+    sleep(0.250) # let time to other threads
 
 
-#
-# Kills all threads
-#
+# There is an infinite cycle so never reach here...
+# Only to remember to call Stop() after using Start()
 hart.Stop()
 
