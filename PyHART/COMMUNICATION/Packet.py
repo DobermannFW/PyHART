@@ -6,8 +6,8 @@
 ###############################################################################
 ###############################################################################
 import struct
-from PyHART.HARTcore.PyHARTengine.Utils import *
-from PyHART.HARTcore.PyHARTengine.Common import *
+from PyHART.COMMUNICATION.Utils import *
+from PyHART.COMMUNICATION.Common import *
 
 
 class HartPacket:
