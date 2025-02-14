@@ -18,24 +18,31 @@ from PyHART.COMMUNICATION.Common import *
 
 class Logger:
     def __init__(self, whereToPrint, logFile):
+        # In HartMaster faccio sys.stdout = Logger(...)
+        # Ecco cosa avviene: prima viene istanziato l'oggetto di tipo Logger e poi viene eseguito l'assegnamento a sys.stdout di questo oggetto appena istanziato.
+        # Quindi quando si istanzia l'oggetto di tipo Logger, viene fatto self.terminal = sys.stdout che è un backup dell'attuale sys.stdout in self.terminal.
+        # Ora sys.stdout diventa l'istanza di logger. La print chiama sys.stdout.write che a questo punto si trova in questa classe.
+        # Questa nuova write chiama la write di self.terminal che è lo standard output originale. inoltre scrive nel file ma soprattutto gestisce un oggetto lock.
+        # Questo significa che ogni print chiamata dai vari thread è protetta dallo stesso lock object.
+        # Il tutto evita di dover fare una funzione di scrittura apposta ma si può chiamare la print di python.
         self.terminal = sys.stdout
         self.whereToPrint = whereToPrint
         self.terminalLock = threading.Lock()
+        self.log = None
         
         if (logFile is not None) and ((whereToPrint == WhereToPrint.BOTH) or (whereToPrint == WhereToPrint.FILE)):
-            self.log = open(logFile, "a")
-            self.writeFile("\n:::::::::::::::::::: New Log Session : {0} ::::::::::::::::::::\n".format(datetime.now()))
+            self.log = open(logFile, 'a')
+            self.writeFile('\n:::::::::::::::::::: New Log Session : {0} ::::::::::::::::::::\n'.format(datetime.now()))
 
     def write(self, message):
-        self.terminalLock.acquire()
-        if (self.whereToPrint == WhereToPrint.BOTH):
-            self.terminal.write(message)
-            self.writeFile(message)
-        elif (self.whereToPrint == WhereToPrint.FILE):
-            self.writeFile(message)
-        elif (self.whereToPrint == WhereToPrint.TERMINAL):
-            self.terminal.write(message)
-        self.terminalLock.release()
+        with self.terminalLock:
+            if (self.whereToPrint == WhereToPrint.BOTH):
+                self.terminal.write(message)
+                self.writeFile(message)
+            elif (self.whereToPrint == WhereToPrint.FILE):
+                self.writeFile(message)
+            elif (self.whereToPrint == WhereToPrint.TERMINAL):
+                self.terminal.write(message)
 
     def writeFile(self, message):
         self.log.write(message)  
@@ -44,49 +51,56 @@ class Logger:
     def flush(self):
         self.terminal.flush()    
 
-    
-class MASTER_STATUS:
-    WATCHING = 0
-    ENABLED = 1
-    USING = 2
-    
-class MASTER_TIMERS:
-    NONE = 0
-    RT1 = 1
-    RT2 = 2
 
 class WhereToPrint:
     BOTH = 0
     TERMINAL = 1
     FILE = 2
+
     
 class Events:
     OnCommDone = 0
     OnFrameSent = 1
 
+
 class CommunicationDoneEventArgs:
-    def __init__(self, _rxPacket, _CommunicationResult, _packetType, _stepRx, _currtime):        
-        if (_rxPacket != None):
-            self.rxPacket = _rxPacket.Clone()
+    def __init__(self, a_rxPacket, _CommunicationResult, _packetType, _stepRx, _onlineDev):        
+        if (a_rxPacket != None):
+            self.rxPacket = a_rxPacket.Clone()
         else:
             self.rxPacket = None
 
+        if _onlineDev != None:
+            self.OnlineDevice = _onlineDev.Clone()
+        else:
+            self.OnlineDevice = None
+            
         self.CommunicationResult = _CommunicationResult
         self.packetType = _packetType
         self.stepRx = _stepRx
-        self.currtime = _currtime
+
 
 class FrameSentEventArgs:
-    def __init__(self, _txPacket, _currtime):
+    def __init__(self, _txPacket, _onlineDev):
         self.txPacket = _txPacket.Clone()
-        self.currtime = _currtime
+        
+        if _onlineDev != None:
+            self.OnlineDevice = _onlineDev.Clone()
+        else:
+            self.OnlineDevice = None
 
-class HartMaster:
-    def __init__(self, port, masterType = None, num_retry = None, retriesOnPolling = None, autoPrintTransactions = None, whereToPrint = None, logFile = None, rt_os = None, manageRtsCts = None):
+
+class HartMaster:    
+    def __init__(self, port, masterType = None, num_retry = None, retriesOnPolling = None, autoPrintTransactions = None, whereToPrint = None, logFile = None, timeout = None):
         
-        self.TIME_OUT = 3
-        self.BYTE_TIME = 0.00916666667
-        
+        if (timeout == None):
+            self.TIME_OUT = 3
+        else:
+            self.TIME_OUT = timeout
+            
+        self.RECV_TIMEOUT = 0.305
+        self.BYTE_TIME = 0.00916666667 # time in milliseconds to transmit a byte with HART fsk baudrate (1200)
+
         if (num_retry == None):
             self.RETRY_COUNT = 3
         else:
@@ -99,25 +113,15 @@ class HartMaster:
         else:
             self._retriesOnPolling = retriesOnPolling
             
-        if (whereToPrint == None):
-            self.whereToPrint = WhereToPrint.TERMINAL
-        else:
-            self.whereToPrint = whereToPrint            
-        
-        sys.stdout = Logger(self.whereToPrint, logFile)
+        if (whereToPrint != None):
+            self.whereToPrint = whereToPrint  
+            sys.stdout = Logger(self.whereToPrint, logFile)      
         
         if (autoPrintTransactions == None):
             self.autoPrintTransactions = True
         else:
             self.autoPrintTransactions = autoPrintTransactions
-        """
-        if (self.autoPrintTransactions == True):
-            print("\n")
-            print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-            print("::::::                            PyHART                                 ::::::")
-            print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-            print("\n")
-        """
+        
         self.CommunicationResult = CommResult.NoResponse
         self.RecvPacket = None
         
@@ -125,12 +129,7 @@ class HartMaster:
             self.masterType = MASTER_TYPE.PRIMARY
         else:
             self.masterType = masterType
-            
-        if (rt_os == None):
-            self.runningOnRTOS = False
-        else:
-            self.runningOnRTOS = rt_os
-        
+
         self._packetType = PacketType.NONE
         self._commRes = CommResult.Ok
         self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
@@ -143,42 +142,31 @@ class HartMaster:
         self._serial.baudrate = 1200
         self._serial.parity = serial.PARITY_ODD
         self._serial.stopbits = serial.STOPBITS_ONE
-        self._serial.bytesize = 8 
-        self._serial.xonxoff = False
-        
-        if (manageRtsCts == None):
-            self._serial.rtscts = False
-        else:
-            if (manageRtsCts == True):
-                self._serial.rtscts = True
-            else:
-                self._serial.rtscts = False
-                
-        self._serial.inter_byte_timeout = 0.00916666667
+        self._serial.bytesize = serial.EIGHTBITS
+        self._serial.inter_byte_timeout = self.BYTE_TIME
         self._serial.rts = False
         
         self.NetworkMonitorIsAlive = None
         self.OnResponseOrTimeout = None
         self.monitorThread = None
         
-        self.RT1p_time = 0.303
-        self.RT1s_time = 0.376
-        self.RT2_time = 0.073
-        
-        self.CanAccessNetwork = None
-        self.CanAccessFlag = False
-        
-        if (self.runningOnRTOS == True):
-            self.TIME_OUT = self.RT1p_time
-            
         self.CommunicationResult = None
         self.SentPacket = None
         self.RecvPacket = None
-
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
-    def Start(self):        
+        
+        self.sent = False
+        
+        
+    def Start(self):   
+        self.msgPending = False
+        self.NetIsInBurst = False
+        self.waitForOack = False
+        self.SendMsgEvt = threading.Event()
+        self.serialLock = threading.Lock()
         self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
+        
         self._serial.open()
+        
         self.OnResponseOrTimeout = threading.Event()
         self.OnResponseOrTimeout.clear()
         self.NetworkMonitorIsAlive = threading.Event()
@@ -188,15 +176,6 @@ class HartMaster:
         self.NetworkMonitorIsAlive.set()
         self.monitorThread.start()
         
-        self.CanAccessNetwork = threading.Event()
-        self.CanAccessNetwork.clear()
-        self.CanAccessFlag = False
-        
-        self.networkIsInBurst = False
-        self.masterStatus = MASTER_STATUS.WATCHING
-        self.RT1 = None
-        self.RT2 = None
-        self.runningTimer = MASTER_TIMERS.NONE
         
     def Stop(self):          
         if self.monitorThread is not None:            
@@ -204,147 +183,127 @@ class HartMaster:
             self.monitorThread.join()
             self.monitorThread = None
         
-        self.OnlineDevice = None
         if self._serial is not None:
             self._serial.close()
-        
-        self._serial = None
 
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+
     def PrintMsg(self, evtType, evtArgs):
-        if (evtType == Events.OnCommDone):
-            if ((evtArgs.CommunicationResult == CommResult.Ok) or (evtArgs.CommunicationResult == CommResult.ChecksumError)):                            
-                if (evtArgs.packetType == PacketType.ACK):
-                    if (self.autoPrintTransactions == True):
-                        print('')
-                        print("[SLAVE TO MASTER - ACK] - {0}".format(evtArgs.currtime))
-                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, self.OnlineDevice)
+        with globalPrintActivityLock:
+            if (evtType == Events.OnCommDone):
+                if ((evtArgs.CommunicationResult == CommResult.Ok) or (evtArgs.CommunicationResult == CommResult.ChecksumError)):                            
+                    if (evtArgs.packetType == PacketType.ACK):
+                        print('\n[SLAVE TO MASTER - ACK]')
+                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, evtArgs.OnlineDevice)
+                            
+                    elif (evtArgs.packetType == PacketType.OACK):
+                        print('\n[SLAVE TO MASTER - OACK]')
+                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, evtArgs.OnlineDevice)
                         
-                elif (evtArgs.packetType == PacketType.OACK):
-                    if (self.autoPrintTransactions == True):
-                        print('', 'white')
-                        print("[SLAVE TO MASTER - OACK] - {0}".format(evtArgs.currtime))
-                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, self.OnlineDevice)
-                    
-                elif (evtArgs.packetType == PacketType.BACK):
-                    if (self.autoPrintTransactions == True):
-                        print('')
-                        print("[BURST FRAME - BACK] - {0}".format(evtArgs.currtime))
-                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, self.OnlineDevice)
+                    elif (evtArgs.packetType == PacketType.BACK):
+                        print('\n[BURST FRAME - BACK]')
+                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, evtArgs.OnlineDevice)
+                            
+                    elif (evtArgs.packetType == PacketType.OBACK):
+                        print('\n[BURST FRAME - OBACK]')
+                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, evtArgs.OnlineDevice)
                         
-                elif (evtArgs.packetType == PacketType.OBACK):
-                    if (self.autoPrintTransactions == True):
-                        print('')
-                        print("[BURST FRAME - OBACK] - {0}".format(evtArgs.currtime))
-                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, self.OnlineDevice)
-                    
-                elif (evtArgs.packetType == PacketType.STX):
-                    if (self.autoPrintTransactions == True):
-                        print('')
-                        print("[MASTER TO SLAVE - STX] - {0}".format(evtArgs.currtime))
-                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, self.OnlineDevice)
-                    
-                elif (evtArgs.packetType == PacketType.OSTX):
-                    if (self.autoPrintTransactions == True):
-                        print('')
-                        print("[MASTER TO SLAVE - OSTX] - {0}".format(evtArgs.currtime))
-                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, self.OnlineDevice)
-                    
-                else:
-                    if (self.autoPrintTransactions == True):
-                        print('', 'white')
-                        print("[UNKNOWN PACKET] - {0}".format(evtArgs.currtime))
-                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, self.OnlineDevice)
-                
-                if (evtArgs.CommunicationResult == CommResult.ChecksumError):
-                    if (self.autoPrintTransactions == True):
-                        print ("- CHECKSUM ERROR -")
+                    elif (evtArgs.packetType == PacketType.STX):
+                        print('\n[MASTER TO SLAVE - STX]')
+                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, evtArgs.OnlineDevice)
                         
-                if (self.autoPrintTransactions == True):
-                    print("\n")
-                
-            elif (evtArgs.CommunicationResult == CommResult.FrameError):
-                if (self.autoPrintTransactions == True):
-                    print('')
-                    print("[FRAME ERROR] - {0}".format(evtArgs.currtime))
-                    evtArgs.rxPacket.printPkt(evtArgs.stepRx, self.OnlineDevice)
-                    print("\n")
+                    elif (evtArgs.packetType == PacketType.OSTX):
+                        print('-------------------------------------------------------------------------------', end = '')
+                        print('\n[MASTER TO SLAVE - OSTX]')
+                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, evtArgs.OnlineDevice)
+                        
+                    else:
+                        print('\n[UNKNOWN PACKET]')
+                        evtArgs.rxPacket.printPkt(evtArgs.stepRx, evtArgs.OnlineDevice)
                     
-            elif (evtArgs.CommunicationResult == CommResult.NoResponse):
-                if (self.autoPrintTransactions == True):
+                    if (evtArgs.CommunicationResult == CommResult.ChecksumError):
+                        print('- CHECKSUM ERROR - \n')
+                            
                     print('')
-                    print("[NO RESPONSE RECEIVED] - {0}".format(evtArgs.currtime))
-                    print("\n")
                     
-            elif (evtArgs.CommunicationResult == CommResult.Sync):
-                if (self.autoPrintTransactions == True):
+                elif (evtArgs.CommunicationResult == CommResult.FrameError):
+                    print('\n[FRAME ERROR]')
+                    evtArgs.rxPacket.printPkt(evtArgs.stepRx, evtArgs.OnlineDevice)
                     print('')
-                    print("[SYNCHRONIZING ON PREAMBLES] - {0}".format(evtArgs.currtime))
-                    evtArgs.rxPacket.printPkt(evtArgs.stepRx, self.OnlineDevice)
-                    print("\n")
-        
-        elif (evtType == Events.OnFrameSent):
-            if (self.autoPrintTransactions == True):
+                        
+                elif (evtArgs.CommunicationResult == CommResult.NoResponse):
+                    print('\n[NO RESPONSE RECEIVED]')
+                    print('')
+                        
+                elif (evtArgs.CommunicationResult == CommResult.Sync):
+                    print('\n[SYNCHRONIZING]')
+                    evtArgs.rxPacket.printPkt(evtArgs.stepRx, evtArgs.OnlineDevice)
+                    print('')
+            
+            elif (evtType == Events.OnFrameSent):
+                print('-------------------------------------------------------------------------------', end = '')
+                print('\n[MASTER TO SLAVE - STX]')
+                evtArgs.txPacket.printPkt(STEP_RX.STEP_CHECKSUM, evtArgs.OnlineDevice)
                 print('')
-                print("[MASTER TO SLAVE - STX] - {0}".format(evtArgs.currtime))
-                evtArgs.txPacket.printPkt(STEP_RX.STEP_CHECKSUM, self.OnlineDevice)
-                print("\n")
-    
-    def SendCommdoneEvent(self):
-        if (self.runningOnRTOS == True):
-            if (self._commRes == CommResult.FrameError) or (self._commRes == CommResult.Sync):
-                self.masterStatus = MASTER_STATUS.WATCHING
-            
-                if (self.runningTimer == MASTER_TIMERS.RT1):
-                    self.RT1.cancel()
-                
-                if (self.runningTimer == MASTER_TIMERS.RT2):
-                    self.RT2.cancel()
 
-                self.runningTimer = MASTER_TIMERS.NONE
-            
-                self.CanAccessFlag = False
-                
-                if (self.CanAccessNetwork.is_set() == False):
-                    self.CanAccessNetwork.set()
+
+    def SendCommdoneEvent(self):                
+        if self.autoPrintTransactions == True:
+            evtArgs = CommunicationDoneEventArgs(self._rxPacket, self._commRes, self._packetType, self._decodeResponseStep, self.OnlineDevice)
+            self.PrintMsg(Events.OnCommDone, evtArgs)
         
+        # set variable to return in case of master sent a message
         self.CommunicationResult = self._commRes
         self.RecvPacket = self._rxPacket
-        
-        evtArgs = CommunicationDoneEventArgs(self._rxPacket, self._commRes, self._packetType, self._decodeResponseStep, datetime.now(tz=None))
-        self.PrintMsg(Events.OnCommDone, evtArgs)
+            
+        # Reset variables to receive a new frame
         self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
+        self.sent = False
+        self._rxPacket = None
+
 
     def SendFramesentEvent(self, txPacket):
-        evtArgs = FrameSentEventArgs(txPacket, datetime.now(tz=None))        
-        self.PrintMsg(Events.OnFrameSent, evtArgs)
+        if self.autoPrintTransactions == True:
+            evtArgs = FrameSentEventArgs(txPacket, self.OnlineDevice)  
+            self.PrintMsg(Events.OnFrameSent, evtArgs)
 
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+
     def NetworkMonitor(self):
         while self.NetworkMonitorIsAlive.is_set():
             buffer = None
-            buffer = self._serial.read(self._serial.in_waiting)
 
-            if (buffer):
+            with self.serialLock:
+                buffer = self._serial.read(self._serial.in_waiting)
+
+            if buffer != None:
                 for i in range(len(buffer)):
                     rxByte = buffer[i]
                     
                     if (self._decodeResponseStep == STEP_RX.STEP_PREAMBLES):
-                        self._commRes = CommResult.Ok
-                        self._packetType = PacketType.NONE
-                        self._cnt = 0
-                        self._rxPacket = HartPacket()
+                        #end time counter
+                        if self.sent == True and self.autoPrintTransactions == True:
+                            with globalPrintActivityLock:
+                                # NB. Here the first whole byte has been received, time should be computed on first bit of the first byte.
+                                #     for this I subtract 9ms from computed time before print
+                                rxtime = ((time.perf_counter_ns() - self.t1_start) * 1.0e-6) - 9
+                                print(f'response time: {rxtime} ms')
+                                self.sent = False
                         
-                        self._rxPacket.preamblesCnt += 1
+                        if self._rxPacket == None:
+                            self._commRes = CommResult.Ok
+                            self._packetType = PacketType.NONE
+                            self._cnt = 0
+                            self._rxPacket = HartPacket()
 
                         if (rxByte == HartPacket.PREAMBLE):
-                            self._decodeResponseStep = STEP_RX.STEP_DELIMITER
+                            self._rxPacket.preamblesCnt += 1
+                            if self._rxPacket.preamblesCnt >= 2:
+                                self._decodeResponseStep = STEP_RX.STEP_DELIMITER
                         else:
-                            self._decodeResponseStep = STEP_RX.STEP_DELIMITER
-                            self._rxPacket.preamblesCnt = 0;
                             self._rxPacket.delimiter = rxByte
                             self._commRes = CommResult.Sync
+                            self._decodeResponseStep = STEP_RX.STEP_DELIMITER
                             self.SendCommdoneEvent()
+                            self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
 
                     elif (self._decodeResponseStep == STEP_RX.STEP_DELIMITER):
                         if ((rxByte == HartPacket.PREAMBLE) and (self._rxPacket.preamblesCnt <= HartPacket.MAX_PREAMBLE_NUM)):
@@ -352,8 +311,8 @@ class HartMaster:
                             
                         elif ((rxByte == HartPacket.PREAMBLE) and (self._rxPacket.preamblesCnt > HartPacket.MAX_PREAMBLE_NUM)):
                             self._rxPacket.preamblesCnt += 1
-                            self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
                             self._commRes = CommResult.Sync
+                            self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
                             self.SendCommdoneEvent()
                                 
                         elif (rxByte != HartPacket.PREAMBLE):
@@ -361,11 +320,23 @@ class HartMaster:
                             if (self._rxPacket.preamblesCnt >= HartPacket.MIN_PREAMBLE_NUM):
                                 if (self._rxPacket.isTxPacket()):
                                     self._packetType = PacketType.STX
-                                else:
+                                elif (self._rxPacket.isTxPacket() == False):
                                     if (self._rxPacket.isBurstPacket()):
                                         self._packetType = PacketType.BACK
-                                    else:
+                                    elif (self._rxPacket.isBurstPacket() == False):
                                         self._packetType = PacketType.ACK
+                                    else:
+                                        self._rxPacket.delimiter = rxByte
+                                        self._commRes = CommResult.Sync
+                                        self.SendCommdoneEvent()
+                                        self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
+                                        continue
+                                else:
+                                    self._rxPacket.delimiter = rxByte
+                                    self._commRes = CommResult.Sync
+
+                                    self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
+                                    continue
 
                                 if (self._rxPacket.isLongAddressPacket()):
                                     self._decodeResponseStep = STEP_RX.STEP_LONG_ADDRESS
@@ -374,6 +345,7 @@ class HartMaster:
                             else:
                                 self._commRes = CommResult.Sync
                                 self.SendCommdoneEvent()
+                                self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
                     
                     elif (self._decodeResponseStep == STEP_RX.STEP_SHORT_ADDRESS):
                         if (self._packetType != PacketType.BACK):
@@ -437,10 +409,14 @@ class HartMaster:
                                         if (((self._rxPacket.address[0] & 0x3F) != (self.OnlineDevice.manufacturerId & 0x003F)) or (self._rxPacket.address[1] != ((self.OnlineDevice.deviceType & 0x00FF))) or (self._rxPacket.address[2] != self.OnlineDevice.uid[0]) or (self._rxPacket.address[3] != self.OnlineDevice.uid[1]) or (self._rxPacket.address[4] != self.OnlineDevice.uid[2])):
                                             self._commRes = CommResult.FrameError
                                             self.SendCommdoneEvent()
+                                            self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
+                                            continue
                                     else:
                                         if (((self._rxPacket.address[0] & 0x3F) != ((self.OnlineDevice.deviceType & 0x3F00) >> 8)) or (self._rxPacket.address[1] != ((self.OnlineDevice.deviceType & 0x00FF))) or (self._rxPacket.address[2] != self.OnlineDevice.uid[0]) or (self._rxPacket.address[3] != self.OnlineDevice.uid[1]) or (self._rxPacket.address[4] != self.OnlineDevice.uid[2])):
                                             self._commRes = CommResult.FrameError
                                             self.SendCommdoneEvent()
+                                            self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
+                                            continue
 
                             if (self._rxPacket.getExpansionBytesCount() > 0):
                                 self._decodeResponseStep = STEP_RX.STEP_EXPANSION
@@ -452,6 +428,7 @@ class HartMaster:
                             self._rxPacket.command = rxByte
                             self._commRes = CommResult.FrameError
                             self.SendCommdoneEvent()
+                            self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
                         else:
                             self._cnt += 1
                     
@@ -464,8 +441,9 @@ class HartMaster:
                             self._decodeResponseStep = STEP_RX.STEP_COMMAND
                         elif (self._cnt >= HartPacket.EXT_SIZE):
                             self._rxPacket.command = rxByte
-                            _commRes = CommResult.FrameError
+                            self._commRes = CommResult.FrameError
                             self.SendCommdoneEvent()
+                            self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
                         else:
                             self._cnt += 1
                     
@@ -477,18 +455,24 @@ class HartMaster:
                         self._rxPacket.dataLen = rxByte
 
                         if ((self._rxPacket.isTxPacket() == False) and (rxByte < 2)):
-                            _commRes = CommResult.FrameError
+                            self._commRes = CommResult.FrameError
                             self.SendCommdoneEvent()
+                            self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
+                            continue
 
                         if (self.OnlineDevice != None):
                             if ((self._rxPacket.command == HartPacket.LONG_COMMAND_INDICATOR) and ((self.OnlineDevice.hartRev == HART_REVISION.SIX) or (self.OnlineDevice.hartRev == HART_REVISION.SEVEN))):
                                 if ((self._rxPacket.isTxPacket() == False) and (rxByte < 4)):
                                     self._commRes = CommResult.FrameError
                                     self.SendCommdoneEvent()
+                                    self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
+                                    continue
                                 else:
                                     if (rxByte < 2):
                                         self._commRes = CommResult.FrameError
                                         self.SendCommdoneEvent()
+                                        self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
+                                        continue
 
                         if (self._rxPacket.isTxPacket() == False):
                             self._decodeResponseStep = STEP_RX.STEP_RESPONSE_CODE
@@ -513,6 +497,7 @@ class HartMaster:
                     elif (self._decodeResponseStep == STEP_RX.STEP_DATA):
                         if (self._cnt < HartPacket.DATA_SIZE):
                             self._rxPacket.data[self._cnt] = rxByte
+                            self._rxPacket.dataCount += 1
 
                         if (self._rxPacket.isTxPacket()):
                             if (self._cnt == (self._rxPacket.dataLen - 1)):
@@ -531,6 +516,7 @@ class HartMaster:
                             self._rxPacket.checksum = rxByte
                             self._commRes = CommResult.FrameError
                             self.SendCommdoneEvent()
+                            self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
                     
                     elif (self._decodeResponseStep == STEP_RX.STEP_CHECKSUM):
                         checksum = self._rxPacket.ComputeChecksum()
@@ -541,174 +527,62 @@ class HartMaster:
 
                         self._rxPacket.checksum = rxByte
                             
-                        if (self.runningOnRTOS == True): 
-                            self.SendCommdoneEvent()
-                            
-                            if (self._packetType == PacketType.ACK):
-                                if (self.masterStatus == MASTER_STATUS.USING):
-                                    self.StopTimers()
-                                    self.masterStatus = MASTER_STATUS.WATCHING
-                                    if (self.networkIsInBurst == False):
-                                        self.StartRT2Timer()
-                                    else:
-                                        self.StartRT1Timer(False)
-                                    
-                                    if ((self._commRes == CommResult.Ok) and (self._rxPacket.command == 0) and (self._rxPacket.resCode == 0) and (self._rxPacket.isLongAddressPacket() == False)):
-                                        self.OnlineDevice = HartDevice()
-                                        self.OnlineDevice.Fill(self._rxPacket, self.masterType)
-                                    
-                                    if (self.OnResponseOrTimeout.is_set() == False):
-                                        self.OnResponseOrTimeout.set()
-
-                            elif (self._packetType == PacketType.OACK):
-                                if (self.networkIsInBurst == False):
-                                    if (self.masterStatus == MASTER_STATUS.WATCHING):
-                                        self.BecameTokenHandler()
-                                        
-                                    elif (self.masterStatus == MASTER_STATUS.USING):
-                                        self.ManageUsingStatusWhenMessageIsNotForMe()
+                        if (self._packetType == PacketType.ACK):
+                            if (self.OnResponseOrTimeout != None):
+                                if ((self._commRes == CommResult.Ok) and (self._rxPacket.command == 0) and (self._rxPacket.resCode == 0)): # and (self._rxPacket.isLongAddressPacket() == False)
+                                    self.OnlineDevice = HartDevice()
+                                    self.OnlineDevice.Fill(self._rxPacket, self.masterType)
+                                
+                                if isInBurst(self._rxPacket.address[0]) == False:
+                                    self.NetIsInBurst = False
                                 else:
-                                    if (self.masterStatus == MASTER_STATUS.WATCHING):
-                                        self.CannotBecameTokenHandler(False)
-                                        
-                                    elif (self.masterStatus == MASTER_STATUS.USING):
-                                        self.ManageUsingStatusWhenMessageIsNotForMe()
-                                        
-                            elif (self._packetType == PacketType.BACK):
-                                self.networkIsInBurst = True
-                                if (self.masterStatus == MASTER_STATUS.WATCHING):
-                                    self.CannotBecameTokenHandler(False)
-                                    
-                                elif (self.masterStatus == MASTER_STATUS.USING):
-                                    self.ManageUsingStatusWhenMessageIsNotForMe()
-
-                            elif (self._packetType == PacketType.OBACK):
-                                self.networkIsInBurst = True
-                                if (self.masterStatus == MASTER_STATUS.WATCHING):
-                                    self.BecameTokenHandler()
-                                    
-                                elif (self.masterStatus == MASTER_STATUS.USING):
-                                    self.ManageUsingStatusWhenMessageIsNotForMe()
-
-                            elif (self._packetType == PacketType.OSTX):
-                                if (self.networkIsInBurst == False):
-                                    if (self.masterStatus == MASTER_STATUS.WATCHING):
-                                        self.CannotBecameTokenHandler(False)
-                                        
-                                    elif (self.masterStatus == MASTER_STATUS.USING):
-                                        self.ManageUsingStatusWhenMessageIsNotForMe()
-                                else:
-                                    if (self.masterStatus == MASTER_STATUS.WATCHING):
-                                        self.CannotBecameTokenHandler(True)
-                                        
-                                    elif (self.masterStatus == MASTER_STATUS.USING):
-                                        self.ManageUsingStatusWhenMessageIsNotForMe()
-
-                        else:                           
-                            
-                            if (self._packetType == PacketType.ACK):
-                                if (self.OnResponseOrTimeout != None):
-                                    if ((self._commRes == CommResult.Ok) and (self._rxPacket.command == 0) and (self._rxPacket.resCode == 0) and (self._rxPacket.isLongAddressPacket() == False)):
-                                        self.OnlineDevice = HartDevice()
-                                        self.OnlineDevice.Fill(self._rxPacket, self.masterType)
-                                    self.SendCommdoneEvent()
-                                    self.OnResponseOrTimeout.set()
-                                else:
-                                    self.SendCommdoneEvent()
+                                    self.NetIsInBurst = True
+                                
+                                self.SendCommdoneEvent()
+                                self.OnResponseOrTimeout.set()
                             else:
                                 self.SendCommdoneEvent()
+                        else:
+                            # Try to perform a minimum synchronization
+                            if (self._packetType == PacketType.BACK) or (self._packetType == PacketType.OBACK):
+                                self.NetIsInBurst = True
+                                if self.msgPending == True:
+                                    self.SendMsgEvt.set()
+                            else:
+                                if isInBurst(self._rxPacket.address[0]) == False:
+                                    self.NetIsInBurst = False
+                                else:
+                                    self.NetIsInBurst = True
+                                    
+                                if self._packetType == PacketType.OSTX:
+                                    self.waitForOack = True
+                                elif self._packetType == PacketType.OACK:
+                                    if self.msgPending == True:
+                                        self.SendMsgEvt.set()
+                                
+                            self.SendCommdoneEvent()
 
                         self._decodeResponseStep = STEP_RX.STEP_PREAMBLES
 
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
-    def ManageUsingStatusWhenMessageIsNotForMe(self):
-        self.StopTimers()        
-        self.masterStatus = MASTER_STATUS.WATCHING
-        
-        if (self.OnResponseOrTimeout.is_set() == False):
-            self._commRes = CommResult.NoResponse
-            self.OnResponseOrTimeout.set()
-            
-    def CannotBecameTokenHandler(self, doubleTime):
-        self.StopTimers()     
-        self.masterStatus = MASTER_STATUS.WATCHING
-        self.StartRT1Timer(doubleTime)
 
-    def BecameTokenHandler(self):
-        self.StopTimers()
-        self.runningTimer = MASTER_TIMERS.NONE
-        self.MasterCanAccessNetwork()
-
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
     def SetOnlineDevice(self, device):
         self.OnlineDevice = device
         
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
-    def StopTimers(self):
-        if (self.runningTimer == MASTER_TIMERS.RT1):
-            self.RT1.cancel()
-        elif (self.runningTimer == MASTER_TIMERS.RT2):
-            self.RT2.cancel()
-            
-        self.runningTimer = MASTER_TIMERS.NONE
-    
-    def ManageRT1time(self, interval, doubleTime):
-        if (doubleTime == False):
-            self.RT1 = threading.Timer(interval, self.RT1Expired)
-            self.RT1.start()
-        else:
-            self.RT1 = threading.Timer(interval * 2, self.RT1Expired)
-            self.RT1.start()
-    
-    def StartRT1Timer(self, doubleTime):
-        self.runningTimer = MASTER_TIMERS.RT1
-        
-        if (self.masterType == MASTER_TYPE.PRIMARY):
-            self.ManageRT1time(self.RT1p_time, doubleTime)
-        else:
-            self.ManageRT1time(self.RT1s_time, doubleTime)
-        
-    def StartRT2Timer(self):
-        self.runningTimer = MASTER_TIMERS.RT2
-        self.RT2 = threading.Timer(self.RT2_time, self.RT2Expired)
-        self.RT2.start()
-    
-    def RT2Expired(self):
-        self.runningTimer = MASTER_TIMERS.NONE
-        if (self.masterStatus == MASTER_STATUS.WATCHING):
-            self.networkIsInBurst = False
-            self.MasterCanAccessNetwork()
-    
-    def RT1Expired(self):
-        self.runningTimer = MASTER_TIMERS.NONE
-    
-        if (self.masterStatus == MASTER_STATUS.WATCHING):
-            self.networkIsInBurst = False
-            self.MasterCanAccessNetwork()
-            
-        elif (self.masterStatus == MASTER_STATUS.USING):
-            self.masterStatus = MASTER_STATUS.WATCHING
-            self._commRes = CommResult.NoResponse
-            self.SendCommdoneEvent()
-            self.OnResponseOrTimeout.set()
 
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
     def CanRetry(self):
-        if (self._numberOfRetries > 0):
+        if (self._numberOfRetries >= 0):
             if (self._numberOfRetries < self.RETRY_COUNT):
-                # for retries let time to field device...
-                #print("-------------------------------------------------------------------------------")
-                print("[ !!! RETRY !!! ]")
-                time.sleep(0.5)
+                if self.autoPrintTransactions == True:
+                    with globalPrintActivityLock:
+                        print('[ !!! RETRY !!! ]')
                 
             self._numberOfRetries -= 1
             
             return True
         else:
-            # for retries let time to field device...
-            time.sleep(0.5)
             return False
-            
+
+
     def PerformTransaction(self, command, Data):
         commRes = CommResult.NoResponse
         self._numberOfRetries = self.RETRY_COUNT
@@ -719,11 +593,10 @@ class HartMaster:
                 dataLen = len(Data)
             else:
                 dataLen = 0
-            
             commRes, txPkt, rxPkt = self.SendCmd(command, Data, dataLen, False)
-            
         return commRes, txPkt, rxPkt
-        
+
+
     def PerformBroadcastTransaction(self, command, Data):
         commRes = CommResult.NoResponse
         self._numberOfRetries = self.RETRY_COUNT
@@ -738,22 +611,33 @@ class HartMaster:
             commRes, txPkt, rxPkt = self.SendCmd(command, Data, dataLen, True)
             
         return commRes, txPkt, rxPkt
-                
-    def SendCustomFrame(self, txFrame):
+
+
+    #
+    # If wait for res is True, the SendFrm will wait for response
+    # else the buffer is sent and the execution of the program continue.
+    # Example you want to send a frame with a wrong checksum, you want to ewait a response
+    # but if you want to send two consecutive frame with a small gap, you should not
+    # want to wait a response after sending the first buffer.
+    # You can omit this parameter. it is True by default.
+    # In the second case probably you don't want to close rts signal after sending first frame.
+    # You cna omit this parameter, default is True
+    #
+    def SendCustomFrame(self, txFrame, waitForRes = True, closeRTS = True):
         commRes = CommResult.NoResponse
         self._numberOfRetries = self.RETRY_COUNT
-        txPkt = None
         rxPkt = None
         while ((commRes != CommResult.Ok) and self.CanRetry()):
-            commRes, txPkt, rxPkt = self.SendFrm(txFrame)
+            commRes, rxPkt = self.SendFrm(txFrame, waitForRes, closeRTS)
         
-        return commRes, txPkt, rxPkt
-                
+        return commRes, rxPkt
+        
+
     def LetKnowDevice(self, pollAddr):        
         txPkt = None
         rxPkt = None
         if (self._retriesOnPolling == False):
-            commRes, txPkt, rxPkt, device = self.SendShortCommandZero(pollAddr)            
+            commRes, txPkt, rxPkt, device = self.SendShortCommandZero(pollAddr)
         else:
             commRes = CommResult.NoResponse
             self._numberOfRetries = self.RETRY_COUNT
@@ -763,63 +647,63 @@ class HartMaster:
         return commRes, txPkt, rxPkt, device
         
         
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
-    def WaitForResponseNoRTOS(self):
+    def WaitForResponse(self):
         event_is_set = self.OnResponseOrTimeout.wait(self.TIME_OUT)
+
         if (event_is_set == False):
+            if self.autoPrintTransactions == True:
+                with globalPrintActivityLock:
+                    print(f'time out: {(time.perf_counter_ns() - self.t1_start) * 1.0e-6} ms')
             self._commRes = CommResult.NoResponse
             self.SendCommdoneEvent()
-        
+
         self.OnResponseOrTimeout.clear()
-        
-    def WaitForResponseRTOS(self):
-        self.OnResponseOrTimeout.wait()
-        self.OnResponseOrTimeout.clear()
-        
+
+ 
     def SendCmd(self, command, Data, DataLen, UseBroadcastAddress):
         txPacket = None
         if (self.OnlineDevice != None):
             txPacket = HartPacket()
+            
             txPacket.PrepareTxPacket(self.OnlineDevice, self.masterType, False, self.OnlineDevice.pollAddr, Data, DataLen, command, UseBroadcastAddress)
             txFrame = txPacket.ToFrame()
             
             self.WriteOnSerial(txFrame, len(txFrame))
             self.SendFramesentEvent(txPacket)
 
-            if (self.runningOnRTOS == False):
-                self.WaitForResponseNoRTOS()
-            else:
-                self.WaitForResponseRTOS()
+            self.WaitForResponse()
         else:
             self._commRes = CommResult.NoResponse
             self.SendCommdoneEvent()
    
         return self.CommunicationResult, txPacket, self.RecvPacket
 
-    def SendFrm(self, txFrame):
-        if (txFrame is not None) and (len(txFrame) > 0):
-            self.WriteOnSerial(txFrame, len(txFrame))
-            txPacket = None
-            
-            try:
-                txPacket = HartPacket()
-                txPacket.FillFromTxFrame(txFrame)
-                self.SendFramesentEvent(txPacket)
 
-                if (self.runningOnRTOS == False):
-                    self.WaitForResponseNoRTOS()
-                else:
-                    self.WaitForResponseRTOS()
-            except Exception as exc:
-                self.CommunicationResult = CommResult.NoResponse
-                print("\n[MASTER TO SLAVE - STX] - {0}".format(datetime.now(tz=None)))
-                print ("Sent bytes: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(txFrame[0:len(txFrame)])))
-                print ('\n')
+    def SendFrm(self, txFrame, waitForRes = True, closeRTS = True):
+        if (txFrame is not None) and (len(txFrame) > 0):
+            self.WriteOnSerial(txFrame, len(txFrame), closeRTS)
+
+            self._numberOfRetries = -1
+            if self.autoPrintTransactions == True:
+                with globalPrintActivityLock:
+                    print('-------------------------------------------------------------------------------', end = '')
+                    print('\n[MASTER TO SLAVE - STX] - {0}'.format(datetime.now(tz=None)))
+                    print('Sent bytes: ' + ' '.join('0x{0:02X}'.format(val) for i, val in enumerate(txFrame[0:len(txFrame)])))
+                    print('\n')
+
+            if waitForRes == True:
+                self.WaitForResponse()
             
-            return self.CommunicationResult, txPacket, self.RecvPacket
+            return self.CommunicationResult, self.RecvPacket
         else:
-            print("\n[MASTER TO SLAVE - STX] - {0}".format(datetime.now(tz=None)))
-            print ('Frame to send is None or Empty\n\n')
+            if self.autoPrintTransactions == True:
+                with globalPrintActivityLock:
+                    print('-------------------------------------------------------------------------------', end = '')
+                    print('\n[MASTER TO SLAVE - STX] - {0}'.format(datetime.now(tz=None)))
+                    print('Frame to send is None or Empty\n\n')
+            
+            return CommResult.NoResponse, None
+
 
     def SendShortCommandZero(self, pollAddr):
         txPacket = HartPacket()
@@ -829,59 +713,40 @@ class HartMaster:
         self.WriteOnSerial(txFrame, len(txFrame))
         self.SendFramesentEvent(txPacket)
         
-        if (self.runningOnRTOS == False):
-            self.WaitForResponseNoRTOS()
-        else:
-            self.WaitForResponseRTOS()
- 
-        return self.CommunicationResult, txPacket, self.RecvPacket, self.OnlineDevice
+        self.WaitForResponse()
 
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
-    def TransmitMessage(self, buffer, len):
-        self.masterStatus = MASTER_STATUS.ENABLED
-        txTime = self.BYTE_TIME * len
-        self._serial.rts = True
-        self._serial.write(buffer)
-        time.sleep(txTime)
-        self._serial.rts = False
-        self.masterStatus = MASTER_STATUS.USING
-        
-    def WaitForTransmission(self, buffer, len):
-        self.CanAccessNetwork.wait()
-        self.CanAccessNetwork.clear()
-        
-        if (self.CanAccessFlag == True):
-            self.TransmitMessage(buffer, len)
-            self.StartRT1Timer(False)
-            
-    def MasterCanAccessNetwork(self):
-        if (self.CanAccessNetwork.is_set() == False):
-            self.CanAccessFlag = True
-            self.CanAccessNetwork.set()
-            
-    def WriteOnSerial(self, buffer, len):
-        if (self.runningOnRTOS == True):
-            self.CanAccessFlag = False
-        
-            if (self.runningTimer == MASTER_TIMERS.NONE):                
-                self.masterStatus = MASTER_STATUS.WATCHING
-                self.StartRT1Timer(False)
-                
-                self.WaitForTransmission(buffer, len)
-            
-            elif ((self.runningTimer == MASTER_TIMERS.RT2) or (self.runningTimer == MASTER_TIMERS.RT1)) and (self.masterStatus == MASTER_STATUS.WATCHING):
-                self.WaitForTransmission(buffer, len)
-            
+        if self.CommunicationResult != CommResult.Ok:
+            return self.CommunicationResult, txPacket, self.RecvPacket, None
         else:
-            if (self._serial.rtscts == True):
-                self._serial.rts = True
-                time.sleep(self.BYTE_TIME) # Wait that RTS has really been set before to send the frame.
+            return self.CommunicationResult, txPacket, self.RecvPacket, self.OnlineDevice
 
+
+    def WriteOnSerial(self, buffer, len, closeRTS = True):
+        self.SendMsgEvt.clear()
+        
+        if self.NetIsInBurst == True:
+            self.msgPending = True
+            self.SendMsgEvt.wait(3)
+            
+        if self.waitForOack == True:
+            self.msgPending = True
+            self.SendMsgEvt.wait(1)
+            self.waitForOack = False
+
+        with self.serialLock:
+            self._serial.rts = True
             self._serial.write(buffer)
-            self._serial.flush()
             
-            if (self._serial.rtscts == True):
-                # flush is not enaugh. Better to wait a while before to clear RTS.
-                # This ensure that all frame bytes have been sent.
-                time.sleep(self.BYTE_TIME * 2)
+            # wait for all byte go out before to close RTS.
+            # wait for two additional byte to avoid problems...
+            time.sleep(self.BYTE_TIME * (len + 2))
+
+            if closeRTS == True:
                 self._serial.rts = False
+
+        #start time counter
+        self.t1_start = time.perf_counter_ns()
+        self.sent = True
+
+
+
