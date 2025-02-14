@@ -6,16 +6,16 @@
 ###############################################################################
 ###############################################################################
 import struct
-from PyHART.COMMUNICATION.Utils import *
-from PyHART.COMMUNICATION.Common import *
+from PyHART.HARTcore.PyHARTengine.Utils import *
+from PyHART.HARTcore.PyHARTengine.Common import *
 
 
 class HartPacket:
     ADDR_SIZE = 5
     EXT_SIZE = 3
-    DATA_SIZE = 512
+    DATA_SIZE = 256
     MAX_PREAMBLE_NUM = 20
-    MIN_PREAMBLE_NUM = 3
+    MIN_PREAMBLE_NUM = 2
     PREAMBLE = 255
     LONG_COMMAND_INDICATOR = 31
 
@@ -29,17 +29,18 @@ class HartPacket:
         self.resCode = 0
         self.devStatus = 0
         self.data = bytearray(HartPacket.DATA_SIZE)
+        self.dataCount = 0
         self.checksum = 0
         
     def GetLongCommand(self, command, data):
         if ((command == HartPacket.LONG_COMMAND_INDICATOR) and (len(data) >= 2)):
             cmdByte = bytearray(2)
-            return (struct.unpack_from(">H", data, 0))[0]
+            return (struct.unpack_from('>H', data, 0))[0]
             
         return 0x0000
         
     def isLongAddressPacket(self):
-        if ((self.delimiter & 0x80) > 0):
+        if ((self.delimiter & 0x80) == 0x80):
             return True
         else:
             return False
@@ -50,14 +51,18 @@ class HartPacket:
     def isTxPacket(self):
         if (((self.delimiter & 0x07) == 0x06) or ((self.delimiter & 0x07) == 0x01)):
             return False
-        else:
+        elif (self.delimiter & 0x07) == 0x02:
             return True
+        else:
+            return None
         
     def isBurstPacket(self):
         if ((self.delimiter & 0x07) == 0x01):
             return True
-        else:
+        elif ((self.delimiter & 0x07) != 0x01):
             return False
+        else:
+            return None            
         
     def ComputeChecksum(self):
         checksum = self.delimiter
@@ -110,6 +115,7 @@ class HartPacket:
             txFrame.append(HartPacket.LONG_COMMAND_INDICATOR)
         else:
             txFrame.append(self.command)
+
         txFrame.append(self.dataLen)
         
         len = 0
@@ -126,6 +132,7 @@ class HartPacket:
         txFrame.append(self.checksum)
 
         return txFrame
+
         
     def Clone(self):
         retPacket = HartPacket()
@@ -135,10 +142,11 @@ class HartPacket:
         retPacket.address = self.address[:]
         retPacket.command = self.command
         retPacket.expansionBytes = self.expansionBytes[:]
-        retPacket.dataLen = self.dataLen
+        retPacket.dataLen = self.dataLen # lenght of all data bytes, data+rescodes+longcommand
         retPacket.resCode = self.resCode
         retPacket.devStatus = self.devStatus
         retPacket.data = self.data[:]
+        retPacket.dataCount = self.dataCount # lenght only of the data bytes
         retPacket.checksum = self.checksum
 
         return retPacket
@@ -175,7 +183,7 @@ class HartPacket:
                 for idx in range(txDataLen):
                     self.data[idx + 2] = txData[idx]
 
-            cmdBytes = struct.pack(">H", _command)
+            cmdBytes = struct.pack('>H', _command)
             self.data[0] = cmdBytes[0]
             self.data[1] = cmdBytes[1]
             self.dataLen += txDataLen
@@ -183,16 +191,17 @@ class HartPacket:
             if ((txDataLen > 0) and (txData != None)):
                 for idx in range(txDataLen):
                     self.data[idx] = txData[idx]
-                
+
             self.dataLen = txDataLen
             if (_command <= 255):
                 self.command = _command
             else:
-                cmdBytes = struct.pack(">H", _command)
+                cmdBytes = struct.pack('>H', _command)
                 self.command = cmdBytes[1]
-
-        self.checksum = self.ComputeChecksum()
         
+        self.checksum = self.ComputeChecksum()
+    
+
     def FillFromTxFrame(self, txFrame):
         idx = 0
 
@@ -237,46 +246,46 @@ class HartPacket:
 
     def printPkt(self, step, OnlineDevice):
         if (step >= STEP_RX.STEP_PREAMBLES):
-            print("Preambles Count: {0:d}".format(self.preamblesCnt))
+            print('Preambles Count: {0:d}'.format(self.preamblesCnt))
             
         if (step >= STEP_RX.STEP_DELIMITER):
-            print("      Delimiter: 0x{0:02X}".format(self.delimiter))
+            print('      Delimiter: 0x{0:02X}'.format(self.delimiter))
             
         if ((step >= STEP_RX.STEP_SHORT_ADDRESS) or (step >= STEP_RX.STEP_LONG_ADDRESS)):
             if (self.isLongAddressPacket()):
-                print ("        Address: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(self.address[0:HartPacket.ADDR_SIZE])))
+                print ('        Address: ' + ' '.join('0x{0:02X}'.format(val) for i, val in enumerate(self.address[0:HartPacket.ADDR_SIZE])))
             else:
-                print("        Address: 0x{0:02X}".format(self.address[0]))
+                print('        Address: 0x{0:02X}'.format(self.address[0]))
         
         if (step >= STEP_RX.STEP_EXPANSION):
             expansionCnt = self.getExpansionBytesCount()
             if (expansionCnt > 0):
-                print ("      Expansion: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(self.expansionBytes[0:expansionCnt])))
+                print ('      Expansion: ' + ' '.join('0x{0:02X}'.format(val) for i, val in enumerate(self.expansionBytes[0:expansionCnt])))
             
         if (step >= STEP_RX.STEP_COMMAND):
-            print("        Command: {0:d}".format(self.command))
+            print('        Command: {0:d}'.format(self.command))
             
         if (step >= STEP_RX.STEP_DATA_LEN):
-            print("    Data Length: {0:d}".format(self.dataLen))
+            print('    Data Length: {0:d}'.format(self.dataLen))
             
         if (self.isTxPacket() == False):
             if (step >= STEP_RX.STEP_RESPONSE_CODE):
                 if (self.resCode == 0):
-                    print("  Response Code: {0:d}".format(self.resCode))
+                    print('  Response Code: {0:d}'.format(self.resCode))
                 else:
-                    print("  Response Code: {0:d}".format(self.resCode) + " - NOT OK -");
+                    print('  Response Code: {0:d}'.format(self.resCode) + ' - NOT OK -');
 
                 errors = hasCommunicationErrors(self.resCode)
                 l = len(errors)
                 for idx in range(l):
-                    print("                 " + errors[idx])
+                    print('                 ' + errors[idx])
 
             if (step >= STEP_RX.STEP_DEVICE_STATUS):
-                print("  Device Status: 0x{0:02X}".format(self.devStatus))
+                print('  Device Status: 0x{0:02X}'.format(self.devStatus))
                 LastDevStatus = GetDevStatusDesc(self.devStatus)
                 l = len(LastDevStatus)
                 for idx in range (l):
-                    print("                 " + LastDevStatus[idx])            
+                    print('                 ' + LastDevStatus[idx])            
         
         if ((step >= STEP_RX.STEP_DATA) and (self.dataLen > 0)):
             startIdx = 0
@@ -287,34 +296,31 @@ class HartPacket:
                     if (self.isTxPacket() == False):
                         startIdx = 2
                         longCmd = self.GetLongCommand(self.command, self.data)
-                        print("   Long Command: {0:d} - 0x{1:02X} 0x{2:02X}".format(longCmd, self.data[0], self.data[1]))
+                        print('   Long Command: {0:d} - 0x{1:02X} 0x{2:02X}'.format(longCmd, self.data[0], self.data[1]))
                         
-                        if ((self.dataLen - 4) > 0):
-                            print ("           Data: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(self.data[startIdx:(self.dataLen - 2)])))
+                        print('           Data: ' + ' '.join('0x{0:02X}'.format(val) for i, val in enumerate(self.data[startIdx:self.dataCount])))
                     else:
                         startIdx = 2
                         longCmd = self.GetLongCommand(self.command, self.data)
-                        print("   Long Command: {0:d} - 0x{1:02X} 0x{2:02X}".format(longCmd, self.data[0], self.data[1]))
+                        print('   Long Command: {0:d} - 0x{1:02X} 0x{2:02X}'.format(longCmd, self.data[0], self.data[1]))
                         
                         if ((self.dataLen - 2) > 0):
-                            print ("           Data: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(self.data[startIdx:self.dataLen])))
+                            print('           Data: ' + ' '.join('0x{0:02X}'.format(val) for i, val in enumerate(self.data[startIdx:self.dataLen])))
                 else:
-                    if (self.isTxPacket() == False):
-                        if ((self.dataLen - 2) > 0):
-                            print ("           Data: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(self.data[startIdx:(self.dataLen - 2)])))
+                    if (self.isTxPacket() == False):                            
+                        print('           Data: ' + ' '.join('0x{0:02X}'.format(val) for i, val in enumerate(self.data[startIdx:(self.dataCount)])))
                     else:
-                        print ("           Data: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(self.data[startIdx:self.dataLen])))
+                        print('           Data: ' + ' '.join('0x{0:02X}'.format(val) for i, val in enumerate(self.data[startIdx:self.dataLen])))
             else:
-                if (self.isTxPacket() == False):
-                    if ((self.dataLen - 2) > 0):
-                        print ("           Data: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(self.data[startIdx:(self.dataLen - 2)])))
+                if (self.isTxPacket() == False):                    
+                    print('           Data: ' + ' '.join('0x{0:02X}'.format(val) for i, val in enumerate(self.data[startIdx:(self.dataCount)])))
                 else:
-                    print ("           Data: " + " ".join('0x{0:02X}'.format(val) for i, val in enumerate(self.data[startIdx:self.dataLen])))
+                    print('           Data: ' + ' '.join('0x{0:02X}'.format(val) for i, val in enumerate(self.data[startIdx:self.dataLen])))
         
         if (step >= STEP_RX.STEP_CHECKSUM):
-            print("       Checksum: 0x{0:02X}".format(self.checksum))
+            print('       Checksum: 0x{0:02X}'.format(self.checksum))
         
         if ((step >= STEP_RX.STEP_SHORT_ADDRESS) or (step >= STEP_RX.STEP_LONG_ADDRESS)):
             if (isInBurst(self.address[0])):
-                print ("- BURST ON -")
+                print ('- BURST ON -')
 
