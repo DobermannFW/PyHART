@@ -1,3 +1,5 @@
+import threading
+
 
 class STEP_RX:
     STEP_PREAMBLES = 0
@@ -12,6 +14,7 @@ class STEP_RX:
     STEP_DATA = 9
     STEP_CHECKSUM = 10
 
+
 class PacketType:
     NONE = 0
     STX = 1
@@ -20,6 +23,7 @@ class PacketType:
     OACK = 4
     BACK = 5
     OBACK = 6
+
     
 class MASTER_TYPE:
     PRIMARY = 0
@@ -33,7 +37,12 @@ class CommResult:
     FrameError = 3
     Sync = 4
 
+
 class HART_REVISION:
     FIVE = 5
     SIX = 6
     SEVEN = 7
+
+
+globalPrintActivityLock = threading.RLock()
+
